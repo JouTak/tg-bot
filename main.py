@@ -14,8 +14,12 @@ load_dotenv()
 
 BOT_TOKEN      = os.getenv("BOT_TOKEN")
 BASE_URL       = os.getenv("BASE_URL")
+
 USERNAME       = os.getenv("NEXTCLOUD_USER")
 PASSWORD       = os.getenv("NEXTCLOUD_PASS")
+
+BOT_LOG_TOPIC_ID = int(os.getenv("BOT_LOG_TOPIC_ID"))
+FORUM_CHAT_ID = int(os.getenv("FORUM_CHAT_ID"))
 
 MYSQL_HOST     = os.getenv("MYSQL_HOST", "localhost")
 MYSQL_PORT     = int(os.getenv("MYSQL_PORT", "3306"))
@@ -260,12 +264,19 @@ def handle_card_move(call):
 
 def poll_new_tasks():
     while True:
-        users = get_user_list()
-        for tg_id, login in users:
-            existing = get_tasks_from_db(tg_id)
+        for tg_id, login in get_user_list():
+            conn = get_mysql_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT card_id FROM tasks WHERE tg_id = %s", (tg_id,))
+            saved_ids = {r[0] for r in cursor.fetchall()}
+            cursor.close()
+            conn.close()
+
             current = fetch_user_tasks(login)
-            current_ids = set(item['card_id'] for item in current)
-            new_ids = current_ids - existing
+            current_ids = {item['card_id'] for item in current}
+
+            new_ids = current_ids - saved_ids
+
             for item in current:
                 if item['card_id'] in new_ids:
                     save_task_to_db(
@@ -279,6 +290,7 @@ def poll_new_tasks():
                         item['stack_title'],
                         item['duedate']
                     )
+
                     kb = InlineKeyboardMarkup()
                     if item['prev_stack_id'] is not None:
                         kb.add(InlineKeyboardButton(
@@ -300,15 +312,126 @@ def poll_new_tasks():
                                 f"{item['next_stack_id']}"
                             )
                         ))
-                    msg = (
-                        f"Новая задача: {item['title']}\n"
+                    user_msg = (
+                        f"🆕 Новая задача: *{item['title']}*\n"
                         f"Board: {item['board_title']}\n"
                         f"Column: {item['stack_title']}\n"
                         f"Due: {item['duedate'] or '—'}\n"
                         f"{item['description'] or '—'}"
                     )
-                    bot.send_message(tg_id, msg, reply_markup=kb, parse_mode="Markdown")
+                    bot.send_message(
+                        tg_id,
+                        user_msg,
+                        reply_markup=kb,
+                        parse_mode="Markdown"
+                    )
+
+                    topic_msg = (
+                        f"🆕 *Новая задача* у пользователя `{tg_id}`: *{item['title']}*\n"
+                        f"Board: {item['board_title']}\n"
+                        f"Column: {item['stack_title']}\n"
+                        f"Due: `{item['duedate'] or '—'}`"
+                    )
+                    send_log(topic_msg)
+
         time.sleep(POLL_INTERVAL)
+
+
+def send_log(text):
+    bot.send_message(
+        FORUM_CHAT_ID,
+        text,
+        parse_mode="Markdown",
+        message_thread_id=BOT_LOG_TOPIC_ID
+    )
+
+def poll_new_tasks():
+    while True:
+        users = get_user_list()
+        for tg_id, login in users:
+            current = fetch_user_tasks(login)
+            conn = get_mysql_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM tasks WHERE tg_id = %s", (tg_id,))
+            saved = {r['card_id']: r for r in cursor.fetchall()}
+            cursor.close()
+            conn.close()
+
+            current_ids = {item['card_id'] for item in current}
+
+            new_ids = current_ids - saved.keys()
+            for item in current:
+                if item['card_id'] in new_ids:
+                    save_task_to_db(
+                        tg_id,
+                        item['card_id'],
+                        item['title'],
+                        item['description'],
+                        item['board_id'],
+                        item['board_title'],
+                        item['stack_id'],
+                        item['stack_title'],
+                        item['duedate']
+                    )
+                    send_log(
+                             f"🆕 *Новая задача*: {item['title']}\n"
+                             f"Board: {item['board_title']}\n"
+                             f"Column: {item['stack_title']}\n"
+                             f"Due: {item['duedate'] or '—'}"
+                             )
+
+            for item in current:
+                cid = item['card_id']
+                if cid in saved:
+                    old = saved[cid]
+                    changes = []
+                    if old['stack_id'] != item['stack_id']:
+                        changes.append(f"Колонка: *{old['stack_title']}* → *{item['stack_title']}*")
+                    od = old['duedate'].isoformat() if old['duedate'] else None
+                    nd = item['duedate'].isoformat() if item['duedate'] else None
+                    if od != nd:
+                        changes.append(f"Due: `{od or '—'}` → `{nd or '—'}`")
+                    if old['title'] != item['title']:
+                        changes.append(f"Заголовок: `{old['title']}` → `{item['title']}`")
+                    if old['description'] != item['description']:
+                        changes.append(f"Описание изменилось")
+                    if changes:
+                        conn = get_mysql_connection()
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            """UPDATE tasks SET
+                                 stack_id=%s, stack_title=%s,
+                                 duedate=%s, title=%s, description=%s
+                               WHERE tg_id=%s AND card_id=%s""",
+                            (
+                                item['stack_id'], item['stack_title'],
+                                item['duedate'], item['title'], item['description'],
+                                tg_id, cid
+                            )
+                        )
+                        conn.commit()
+                        cursor.close()
+                        conn.close()
+                        send_log(
+                            f"✏️ *Изменения в карточке* «{item['title']}» (ID `{cid}`):\n"
+                            + "\n".join(changes)
+                        )
+        time.sleep(POLL_INTERVAL)
+
+@bot.message_handler(commands=['whereami'])
+def whereami(m):
+    bot.send_message(
+        m.chat.id,
+        f"Это тема с message_thread_id = {m.message_thread_id}",
+        message_thread_id=m.message_thread_id
+    )
+
+@bot.message_handler(commands=['chatid'])
+def chatid(m):
+    bot.send_message(
+        m.chat.id,
+        f"chat_id = {m.chat.id}"
+    )
 
 if __name__ == "__main__":
     t = threading.Thread(target=poll_new_tasks, daemon=True)
