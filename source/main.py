@@ -2,6 +2,8 @@ import os
 import logging
 import threading
 import time
+from collections import deque
+
 import telebot
 import requests
 import mysql.connector
@@ -38,7 +40,7 @@ if missing:
 HEADERS = {'OCS-APIRequest': 'true', 'Content-Type': 'application/json'}
 
 logging.basicConfig(
-    level=logging.WARNING,
+    level=logging.DEBUG,
     format='[%(levelname)s] %(asctime)s - %(message)s',
     handlers=[
         logging.FileHandler("bot.log", encoding="utf-8"),
@@ -46,6 +48,30 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+class RateLimiter:
+    def __init__(self, max_calls, period):
+        self.max_calls = max_calls
+        self.period = period
+        self.calls = deque()
+
+    def wait(self):
+        now = time.time()
+        while self.calls and self.calls[0] <= now - self.period:
+            self.calls.popleft()
+        if len(self.calls) >= self.max_calls:
+            sleep_time = self.period - (now - self.calls[0])
+            if sleep_time > 0:
+                print("не справляюсь. ухожу в спячку")
+                time.sleep(sleep_time)
+                print("вышел из спячки")
+        self.calls.append(time.time())
+
+message_rate_limiter = RateLimiter(max_calls=20, period=60.0)
+
+def send_message_limited(*args, **kwargs):
+    message_rate_limiter.wait()
+    return bot.send_message(*args, **kwargs)
 
 def get_mysql_connection():
     conn = mysql.connector.connect(
@@ -102,9 +128,17 @@ def save_task_to_db(tg_id, card_id, title, description, board_id, board_title, s
     cursor = conn.cursor()
     cursor.execute(
         """
-        INSERT IGNORE INTO tasks
+        INSERT INTO tasks
           (tg_id, card_id, title, description, board_id, board_title, stack_id, stack_title, duedate)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+          title=VALUES(title),
+          description=VALUES(description),
+          board_id=VALUES(board_id),
+          board_title=VALUES(board_title),
+          stack_id=VALUES(stack_id),
+          stack_title=VALUES(stack_title),
+          duedate=VALUES(duedate)
         """,
         (
             tg_id,
@@ -117,6 +151,96 @@ def save_task_to_db(tg_id, card_id, title, description, board_id, board_title, s
             stack_title,
             duedate
         )
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+def save_task_basic(card_id, title, description, board_id, board_title, stack_id, stack_title, duedate):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO tasks
+          (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+          title=VALUES(title),
+          description=VALUES(description),
+          board_id=VALUES(board_id),
+          board_title=VALUES(board_title),
+          stack_id=VALUES(stack_id),
+          stack_title=VALUES(stack_title),
+          duedate=VALUES(duedate)
+        """,
+        (
+            card_id,
+            title,
+            description,
+            board_id,
+            board_title,
+            stack_id,
+            stack_title,
+            duedate
+        )
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def save_task_assignee(card_id, nc_login):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT IGNORE INTO task_assignees
+          (card_id, nc_login)
+        VALUES (%s, %s)
+        """,
+        (card_id, nc_login)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def get_task_assignees(card_id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT nc_login FROM task_assignees WHERE card_id = %s", (card_id,))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return set(row[0] for row in rows)
+
+def get_user_map():
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT tg_id, nc_login FROM users")
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return {row[1]: row[0] for row in rows}
+def get_saved_tasks():
+    conn = get_mysql_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM tasks")
+    tasks = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return {t['card_id']: t for t in tasks}
+
+def update_task_in_db(card_id, title, description, board_id, board_title, stack_id, stack_title, duedate):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE tasks SET
+            title=%s, description=%s,
+            board_id=%s, board_title=%s,
+            stack_id=%s, stack_title=%s,
+            duedate=%s
+        WHERE card_id=%s
+        """,
+        (title, description, board_id, board_title, stack_id, stack_title, duedate, card_id)
     )
     conn.commit()
     cursor.close()
@@ -141,27 +265,27 @@ def get_message_thread_id(board_id):
 def start_handler(message):
     chat_id = message.chat.id
     if message.chat.type != "private":
-        bot.send_message(chat_id, "Эта команда может использоваться только в лс с ботом", message_thread_id=message.message_thread_id)
+        send_message_limited(chat_id, "Эта команда может использоваться только в лс с ботом", message_thread_id=message.message_thread_id)
         return
     if get_login_by_tg_id(message.chat.id)==None:
-        bot.send_message(chat_id, "Введите свой логин cloud.joutak.ru:")
+        send_message_limited(chat_id, "Введите свой логин cloud.joutak.ru:")
     else:
-        bot.send_message(chat_id, "Ваш логин уже имеется в базе данных. Если его необходимо сменить - обратитесь к администратору.")
+        send_message_limited(chat_id, "Ваш логин уже имеется в базе данных. Если его необходимо сменить - обратитесь к администратору.")
 
 @bot.message_handler(commands=['mycards'])
 def show_user_cards(message):
     chat_id = message.chat.id
     if message.chat.type != "private":
-        bot.send_message(chat_id, "Эта команда может использоваться только в лс с ботом", message_thread_id=message.message_thread_id)
+        send_message_limited(chat_id, "Эта команда может использоваться только в лс с ботом", message_thread_id=message.message_thread_id)
         return
 
     saved_login = get_login_by_tg_id(chat_id)
     if not saved_login:
-        bot.send_message(chat_id, "Сначала отправьте логин командой /start.")
+        send_message_limited(chat_id, "Сначала отправьте логин командой /start.")
         return
 
     login = saved_login
-    bot.send_message(chat_id, "Ищу задачи...")
+    send_message_limited(chat_id, "Ищу задачи...")
     tasks = fetch_user_tasks(login)
     for t in tasks:
         save_task_to_db(
@@ -193,7 +317,7 @@ def show_user_cards(message):
             f"Due: {t['duedate'] or '—'}\n"
             f"{t['description'] or '—'}"
         )
-        bot.send_message(chat_id, msg, reply_markup=kb, parse_mode="Markdown")
+        send_message_limited(chat_id, msg, reply_markup=kb, parse_mode="Markdown")
 
 def get_board_title(board_id):
     boards_resp = requests.get(f"{BASE_URL}/boards", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
@@ -206,7 +330,7 @@ def get_board_title(board_id):
 
 @bot.message_handler(commands=['whereami'])
 def whereami(m):
-    bot.send_message(
+    send_message_limited(
         m.chat.id,
         f"Это тема с message_thread_id = {m.message_thread_id}",
         message_thread_id=m.message_thread_id
@@ -214,7 +338,7 @@ def whereami(m):
 
 @bot.message_handler(commands=['chatid'])
 def chatid(message):
-    bot.send_message(
+    send_message_limited(
         message.chat.id,
         f"chat_id = {message.chat.id}",
         message_thread_id=message.message_thread_id
@@ -223,24 +347,24 @@ def chatid(message):
 def set_board_topic_handler(message):
     chat_id = message.chat.id
     if message.chat.type != 'supergroup':
-        bot.send_message(chat_id, "Эта команда работает только в группах с топиками.")
+        send_message_limited(chat_id, "Эта команда работает только в группах с топиками.")
         return
     thread_id = getattr(message, 'message_thread_id', None)
     if not thread_id:
-        bot.send_message(chat_id, "Команда должна вызываться из конкретного топика.")
+        send_message_limited(chat_id, "Команда должна вызываться из конкретного топика.")
         return
     parts = message.text.strip().split()
     if len(parts) < 2:
-        bot.send_message(chat_id, "Используйте: /setboardtopic <номер_доски>", message_thread_id=message.message_thread_id)
+        send_message_limited(chat_id, "Используйте: /setboardtopic <номер_доски>", message_thread_id=message.message_thread_id)
         return
     try:
         board_id = int(parts[1])
     except ValueError:
-        bot.send_message(chat_id, "Номер доски должен быть числом.", message_thread_id=message.message_thread_id)
+        send_message_limited(chat_id, "Номер доски должен быть числом.", message_thread_id=message.message_thread_id)
         return
     board_title = get_board_title(board_id)
     if board_title is None:
-        bot.send_message(chat_id, "Номер доски не найден.", message_thread_id=message.message_thread_id)
+        send_message_limited(chat_id, "Номер доски не найден.", message_thread_id=message.message_thread_id)
         return
 
     try:
@@ -255,7 +379,7 @@ def set_board_topic_handler(message):
         conn.commit()
         cursor.close()
         conn.close()
-        bot.send_message(chat_id, f"Этот топик (ID {thread_id}) привязан к доске {board_title} (ID: {board_id})", message_thread_id=message.message_thread_id)
+        send_message_limited(chat_id, f"Этот топик (ID {thread_id}) привязан к доске {board_title} (ID: {board_id})", message_thread_id=message.message_thread_id)
     except Exception as e:
         logging.exception("Ошибка при сохранении топика для доски" +str(e) )
 
@@ -266,7 +390,7 @@ def save_login(message):
     chat_id = message.chat.id
     nc_login = message.text.strip()
     save_login_to_db(chat_id, nc_login)
-    bot.send_message(chat_id, f"Логин `{nc_login}` сохранён.", parse_mode="Markdown")
+    send_message_limited(chat_id, f"Логин `{nc_login}` сохранён.", parse_mode="Markdown")
 
 def fetch_user_tasks(login):
     result = []
@@ -468,7 +592,7 @@ def handle_card_move(call):
 #                         f"Due: {item['duedate'] or '—'}\n"
 #                         f"{item['description'] or '—'}"
 #                     )
-#                     bot.send_message(
+#                     send_message_limited(
 #                         tg_id,
 #                         user_msg,
 #                         reply_markup=kb,
@@ -488,7 +612,7 @@ def handle_card_move(call):
 
 def send_log(text, board_id=None):
     message_thread_id = get_message_thread_id(board_id)
-    bot.send_message(
+    send_message_limited(
         FORUM_CHAT_ID,
         text,
         parse_mode="Markdown",
@@ -498,121 +622,124 @@ def send_log(text, board_id=None):
 def poll_new_tasks():
     MSK = timezone(timedelta(hours=3))
     while True:
-        conn = get_mysql_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT tg_id, nc_login FROM users")
-        login_map = {row[1]: row[0] for row in cursor.fetchall()}
-        cursor.close()
-        conn.close()
-
+        login_map = get_user_map()
         all_cards = fetch_all_tasks()
-
-
-
-        users = get_user_list()
-        for tg_id, login in users:
-            current = fetch_user_tasks(login)
-            conn = get_mysql_connection()
-            cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT * FROM tasks WHERE tg_id = %s", (tg_id,))
-            saved = {r['card_id']: r for r in cursor.fetchall()}
-            cursor.close()
-            conn.close()
-
-            current_ids = {item['card_id'] for item in current}
-
-            new_ids = current_ids - saved.keys()
-            for item in current:
-                if item['card_id'] in new_ids:
-                    save_task_to_db(
-                        tg_id,
-                        item['card_id'],
-                        item['title'],
-                        item['description'],
-                        item['board_id'],
-                        item['board_title'],
-                        item['stack_id'],
-                        item['stack_title'],
-                        item['duedate']
+        saved_tasks = get_saved_tasks()
+        for item in all_cards:
+            card_id = item['card_id']
+            saved = saved_tasks.get(card_id)
+            if not saved:
+                save_task_basic(
+                    card_id, item['title'], item['description'],
+                    item['board_id'], item['board_title'],
+                    item['stack_id'], item['stack_title'], item['duedate']
+                )
+            else:
+                changes = []
+                if saved['stack_id'] != item['stack_id']:
+                    changes.append(f"Колонка: *{saved['stack_title']}* → *{item['stack_title']}*")
+                UTC = timezone.utc
+                od = saved['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if saved['duedate'] else None
+                nd = item['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if item['duedate'] else None
+                if od != nd:
+                    changes.append(f"Due: `{od or '—'}` → `{nd or '—'}`")
+                if saved['title'] != item['title']:
+                    changes.append(f"Заголовок: `{saved['title']}` → `{item['title']}`")
+                if saved['description'] != item['description']:
+                    changes.append(f"Описание изменилось")
+                if changes:
+                    update_task_in_db(
+                        card_id, item['title'], item['description'],
+                        item['board_id'], item['board_title'],
+                        item['stack_id'], item['stack_title'], item['duedate']
                     )
+            assigned_logins_db = get_task_assignees(card_id)
+            assigned_logins_api = set(item.get('assigned_logins', []))
+            new_assignees = assigned_logins_api - assigned_logins_db
+            for login in new_assignees:
+                save_task_assignee(card_id, login)
+            tg_ids = [login_map[login] for login in assigned_logins_api if login in login_map]
+            for login in new_assignees:
+                tg_id = login_map.get(login)
+                if tg_id:
+                    kb = InlineKeyboardMarkup()
+                    prev_stack_id = item['prev_stack_id']
+                    next_stack_id = item['next_stack_id']
+                    if prev_stack_id is not None:
+                        kb.add(InlineKeyboardButton(
+                            text=f"⬅ {item['prev_stack_title']}",
+                            callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{prev_stack_id}"
+                        ))
+                    if next_stack_id is not None:
+                        kb.add(InlineKeyboardButton(
+                            text=f"➡ {item['next_stack_title']}",
+                            callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{next_stack_id}"
+                        ))
+                    user_msg = (
+                        f"🆕 Новая задача: *{item['title']}*\n"
+                        f"Board: {item['board_title']}\n"
+                        f"Column: {item['stack_title']}\n"
+                        f"Due: {item['duedate'] or '—'}\n"
+                        f"{item['description'] or '—'}"
+                    )
+                    send_message_limited(
+                        tg_id,
+                        user_msg,
+                        reply_markup=kb,
+                        parse_mode="Markdown"
+                    )
+            if not saved:
+                for tg_id in tg_ids:
+                    kb = InlineKeyboardMarkup()
+                    prev_stack_id = item['prev_stack_id']
+                    next_stack_id = item['next_stack_id']
+                    if prev_stack_id is not None:
+                        kb.add(InlineKeyboardButton(
+                            text=f"⬅ {item['prev_stack_title']}",
+                            callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{prev_stack_id}"
+                        ))
+                    if next_stack_id is not None:
+                        kb.add(InlineKeyboardButton(
+                            text=f"➡ {item['next_stack_title']}",
+                            callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{next_stack_id}"
+                        ))
+                    user_msg = (
+                        f"🆕 Новая задача: *{item['title']}*\n"
+                        f"Board: {item['board_title']}\n"
+                        f"Column: {item['stack_title']}\n"
+                        f"Due: {item['duedate'] or '—'}\n"
+                        f"{item['description'] or '—'}"
+                    )
+                    send_message_limited(
+                        tg_id,
+                        user_msg,
+                        reply_markup=kb,
+                        parse_mode="Markdown"
+                    )
+                send_log(
+                    f"🆕 *Новая задача*: {item['title']}\n"
+                    f"Board: {item['board_title']}\n"
+                    f"Column: {item['stack_title']}\n"
+                    f"Due: {item['duedate'] or '—'}",
+                    board_id=item['board_id']
+                )
+            else:
+                if changes:
+                    for tg_id in tg_ids:
+                        send_message_limited(
+                            tg_id,
+                            f"✏️ *Изменения в карточке* «{item['title']}» (ID `{card_id}`):\n" + "\n".join(changes),
+                            parse_mode="Markdown"
+                        )
                     send_log(
-                             f"🆕 *Новая задача*: {item['title']}\n"
-                             f"Board: {item['board_title']}\n"
-                             f"Column: {item['stack_title']}\n"
-                             f"Due: {item['duedate'] or '—'}",
-                            board_id=item['board_id']
-                             )
-                    print(item['board_id'])
-
-            for item in current:
-                cid = item['card_id']
-                if cid in saved:
-                    old = saved[cid]
-                    changes = []
-                    if old['stack_id'] != item['stack_id']:
-                        changes.append(f"Колонка: *{old['stack_title']}* → *{item['stack_title']}*")
-
-                    UTC = timezone.utc
-                    od = old['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if old['duedate'] else None
-                    nd = item['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if item['duedate'] else None
-                    if od != nd:
-                        changes.append(f"Due: `{od or '—'}` → `{nd or '—'}`")
-                    # kb = InlineKeyboardMarkup()
-                    # if item['prev_stack_id'] is not None:
-                    #     kb.add(InlineKeyboardButton(
-                    #         text=f"⬅ {item['prev_stack_title']}",
-                    #         callback_data=(
-                    #             f"move:{item['board_id']}:"
-                    #             f"{item['stack_id']}:"
-                    #             f"{item['card_id']}:"
-                    #             f"{item['prev_stack_id']}"
-                    #         )
-                    #     ))
-                    # if item['next_stack_id'] is not None:
-                    #     kb.add(InlineKeyboardButton(
-                    #         text=f"➡ {item['next_stack_title']}",
-                    #         callback_data=(
-                    #             f"move:{item['board_id']}:"
-                    #             f"{item['stack_id']}:"
-                    #             f"{item['card_id']}:"
-                    #             f"{item['next_stack_id']}"
-                    #         )
-                    #     ))
-
-                    if old['title'] != item['title']:
-                        changes.append(f"Заголовок: `{old['title']}` → `{item['title']}`")
-                    if old['description'] != item['description']:
-                        changes.append(f"Описание изменилось")
-                    if changes:
-                        conn = get_mysql_connection()
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            """UPDATE tasks SET
-                                 stack_id=%s, stack_title=%s,
-                                 duedate=%s, title=%s, description=%s
-                               WHERE tg_id=%s AND card_id=%s""",
-                            (
-                                item['stack_id'], item['stack_title'],
-                                item['duedate'], item['title'], item['description'],
-                                tg_id, cid
-                            )
-                        )
-                        conn.commit()
-                        cursor.close()
-                        conn.close()
-                        bot.send_message(tg_id,
-                            f"✏️ *Изменения в твоей карточке* «{item['title']}» (ID `{cid}`):\n"
-                            + "\n".join(changes),
-                                         parse_mode="Markdown"
-                        )
-                        topic_msg = (
-                            f"🆕 *Новая задача* у пользователя `{tg_id}`: *{item['title']}*\n"
-                            f"Board: {item['board_title']}\n"
-                            f"Column: {item['stack_title']}\n"
-                            f"Due: `{item['duedate'] or '—'}`",
-                        )
-                        send_log(topic_msg, board_id = item['board_id'],)
+                        f"✏️ *Изменения в карточке* «{item['title']}» (ID `{card_id}`):\n" + "\n".join(changes),
+                        board_id=item['board_id']
+                    )
         time.sleep(POLL_INTERVAL)
+
+
+
+
 
 
 

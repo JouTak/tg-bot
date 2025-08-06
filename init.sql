@@ -7,9 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS tasks (
-  id          INT             NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  tg_id       BIGINT          NOT NULL,
-  card_id     INT             NOT NULL,
+  card_id     INT             NOT NULL PRIMARY KEY,
   title       VARCHAR(255)    NOT NULL,
   description TEXT            NOT NULL,
   board_id    INT             NOT NULL,
@@ -17,13 +15,17 @@ CREATE TABLE IF NOT EXISTS tasks (
   stack_id    INT             NOT NULL,
   stack_title VARCHAR(100)    NOT NULL,
   duedate     DATETIME        NULL,
-  created_at  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_tasks_tg_card (tg_id, card_id),
-  CONSTRAINT fk_tasks_users
-    FOREIGN KEY (tg_id) REFERENCES users (tg_id)
-      ON DELETE CASCADE
-      ON UPDATE CASCADE
+  created_at  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB
+  DEFAULT CHARSET=utf8mb4
+  COLLATE=utf8mb4_unicode_ci;
+
+
+CREATE TABLE IF NOT EXISTS task_assignees (
+  card_id INT NOT NULL,
+  nc_login VARCHAR(100) NOT NULL,
+  PRIMARY KEY(card_id, nc_login)
+)ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_unicode_ci;
 
