@@ -38,7 +38,7 @@ if missing:
 HEADERS = {'OCS-APIRequest': 'true', 'Content-Type': 'application/json'}
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.WARNING,
     format='[%(levelname)s] %(asctime)s - %(message)s',
     handlers=[
         logging.FileHandler("bot.log", encoding="utf-8"),
@@ -124,6 +124,19 @@ def save_task_to_db(tg_id, card_id, title, description, board_id, board_title, s
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+def get_message_thread_id(board_id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT message_thread_id FROM board_log_topics WHERE board_id = %s", (board_id,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if row:
+        return row[0]
+    else:
+        return BOT_LOG_TOPIC_ID
+
+
 @bot.message_handler(commands=['start'])
 def start_handler(message):
     chat_id = message.chat.id
@@ -181,6 +194,70 @@ def show_user_cards(message):
             f"{t['description'] or '—'}"
         )
         bot.send_message(chat_id, msg, reply_markup=kb, parse_mode="Markdown")
+
+def get_board_title(board_id):
+    boards_resp = requests.get(f"{BASE_URL}/boards", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
+    boards_resp.raise_for_status()
+    boards = boards_resp.json()
+    for board in boards:
+        if board.get('id') == board_id:
+            return board.get('title')
+    return None
+
+@bot.message_handler(commands=['whereami'])
+def whereami(m):
+    bot.send_message(
+        m.chat.id,
+        f"Это тема с message_thread_id = {m.message_thread_id}",
+        message_thread_id=m.message_thread_id
+    )
+
+@bot.message_handler(commands=['chatid'])
+def chatid(message):
+    bot.send_message(
+        message.chat.id,
+        f"chat_id = {message.chat.id}",
+        message_thread_id=message.message_thread_id
+    )
+@bot.message_handler(commands=['setboardtopic'])
+def set_board_topic_handler(message):
+    chat_id = message.chat.id
+    if message.chat.type != 'supergroup':
+        bot.send_message(chat_id, "Эта команда работает только в группах с топиками.")
+        return
+    thread_id = getattr(message, 'message_thread_id', None)
+    if not thread_id:
+        bot.send_message(chat_id, "Команда должна вызываться из конкретного топика.")
+        return
+    parts = message.text.strip().split()
+    if len(parts) < 2:
+        bot.send_message(chat_id, "Используйте: /setboardtopic <номер_доски>", message_thread_id=message.message_thread_id)
+        return
+    try:
+        board_id = int(parts[1])
+    except ValueError:
+        bot.send_message(chat_id, "Номер доски должен быть числом.", message_thread_id=message.message_thread_id)
+        return
+    board_title = get_board_title(board_id)
+    if board_title is None:
+        bot.send_message(chat_id, "Номер доски не найден.", message_thread_id=message.message_thread_id)
+        return
+
+    try:
+        conn = get_mysql_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO board_log_topics (board_id, message_thread_id)
+            VALUES (%s, %s)
+            ON DUPLICATE KEY UPDATE message_thread_id = VALUES(message_thread_id)
+        """, (board_id, thread_id))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        bot.send_message(chat_id, f"Этот топик (ID {thread_id}) привязан к доске {board_title} (ID: {board_id})", message_thread_id=message.message_thread_id)
+    except Exception as e:
+        logging.exception("Ошибка при сохранении топика для доски" +str(e) )
 
 @bot.message_handler(func=lambda msg: get_login_by_tg_id(msg.chat.id) is None)
 def save_login(message):
@@ -355,12 +432,13 @@ def handle_card_move(call):
 #         time.sleep(POLL_INTERVAL)
 
 
-def send_log(text):
+def send_log(text, board_id=None):
+    message_thread_id = get_message_thread_id(board_id)
     bot.send_message(
         FORUM_CHAT_ID,
         text,
         parse_mode="Markdown",
-        message_thread_id=BOT_LOG_TOPIC_ID
+        message_thread_id=message_thread_id
     )
 
 def poll_new_tasks():
@@ -396,8 +474,10 @@ def poll_new_tasks():
                              f"🆕 *Новая задача*: {item['title']}\n"
                              f"Board: {item['board_title']}\n"
                              f"Column: {item['stack_title']}\n"
-                             f"Due: {item['duedate'] or '—'}"
+                             f"Due: {item['duedate'] or '—'}",
+                            board_id=item['board_id']
                              )
+                    print(item['board_id'])
 
             for item in current:
                 cid = item['card_id']
@@ -412,7 +492,27 @@ def poll_new_tasks():
                     nd = item['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if item['duedate'] else None
                     if od != nd:
                         changes.append(f"Due: `{od or '—'}` → `{nd or '—'}`")
-
+                    # kb = InlineKeyboardMarkup()
+                    # if item['prev_stack_id'] is not None:
+                    #     kb.add(InlineKeyboardButton(
+                    #         text=f"⬅ {item['prev_stack_title']}",
+                    #         callback_data=(
+                    #             f"move:{item['board_id']}:"
+                    #             f"{item['stack_id']}:"
+                    #             f"{item['card_id']}:"
+                    #             f"{item['prev_stack_id']}"
+                    #         )
+                    #     ))
+                    # if item['next_stack_id'] is not None:
+                    #     kb.add(InlineKeyboardButton(
+                    #         text=f"➡ {item['next_stack_title']}",
+                    #         callback_data=(
+                    #             f"move:{item['board_id']}:"
+                    #             f"{item['stack_id']}:"
+                    #             f"{item['card_id']}:"
+                    #             f"{item['next_stack_id']}"
+                    #         )
+                    #     ))
 
                     if old['title'] != item['title']:
                         changes.append(f"Заголовок: `{old['title']}` → `{item['title']}`")
@@ -435,28 +535,24 @@ def poll_new_tasks():
                         conn.commit()
                         cursor.close()
                         conn.close()
-                        send_log(
-                            f"✏️ *Изменения в карточке* «{item['title']}» (ID `{cid}`):\n"
-                            + "\n".join(changes)
+                        bot.send_message(tg_id,
+                            f"✏️ *Изменения в твоей карточке* «{item['title']}» (ID `{cid}`):\n"
+                            + "\n".join(changes),
+                                         parse_mode="Markdown"
                         )
+                        topic_msg = (
+                            f"🆕 *Новая задача* у пользователя `{tg_id}`: *{item['title']}*\n"
+                            f"Board: {item['board_title']}\n"
+                            f"Column: {item['stack_title']}\n"
+                            f"Due: `{item['duedate'] or '—'}`",
+                        )
+                        send_log(topic_msg, board_id = item['board_id'],)
         time.sleep(POLL_INTERVAL)
 
-@bot.message_handler(commands=['whereami'])
-def whereami(m):
-    bot.send_message(
-        m.chat.id,
-        f"Это тема с message_thread_id = {m.message_thread_id}",
-        message_thread_id=m.message_thread_id
-    )
 
-@bot.message_handler(commands=['chatid'])
-def chatid(m):
-    bot.send_message(
-        m.chat.id,
-        f"chat_id = {m.chat.id}"
-    )
 
 if __name__ == "__main__":
     t = threading.Thread(target=poll_new_tasks, daemon=True)
     t.start()
+
     bot.polling()
