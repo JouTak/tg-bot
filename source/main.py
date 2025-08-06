@@ -280,79 +280,79 @@ def handle_card_move(call):
     bot.answer_callback_query(call.id, "Перемещено")
     bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=new_kb)
 
-def poll_new_tasks():
-    while True:
-        for tg_id, login in get_user_list():
-            conn = get_mysql_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT card_id FROM tasks WHERE tg_id = %s", (tg_id,))
-            saved_ids = {r[0] for r in cursor.fetchall()}
-            cursor.close()
-            conn.close()
-
-            current = fetch_user_tasks(login)
-            current_ids = {item['card_id'] for item in current}
-
-            new_ids = current_ids - saved_ids
-
-            for item in current:
-                if item['card_id'] in new_ids:
-                    save_task_to_db(
-                        tg_id,
-                        item['card_id'],
-                        item['title'],
-                        item['description'],
-                        item['board_id'],
-                        item['board_title'],
-                        item['stack_id'],
-                        item['stack_title'],
-                        item['duedate']
-                    )
-
-                    kb = InlineKeyboardMarkup()
-                    if item['prev_stack_id'] is not None:
-                        kb.add(InlineKeyboardButton(
-                            text=f"⬅ {item['prev_stack_title']}",
-                            callback_data=(
-                                f"move:{item['board_id']}:"
-                                f"{item['stack_id']}:"
-                                f"{item['card_id']}:"
-                                f"{item['prev_stack_id']}"
-                            )
-                        ))
-                    if item['next_stack_id'] is not None:
-                        kb.add(InlineKeyboardButton(
-                            text=f"➡ {item['next_stack_title']}",
-                            callback_data=(
-                                f"move:{item['board_id']}:"
-                                f"{item['stack_id']}:"
-                                f"{item['card_id']}:"
-                                f"{item['next_stack_id']}"
-                            )
-                        ))
-                    user_msg = (
-                        f"🆕 Новая задача: *{item['title']}*\n"
-                        f"Board: {item['board_title']}\n"
-                        f"Column: {item['stack_title']}\n"
-                        f"Due: {item['duedate'] or '—'}\n"
-                        f"{item['description'] or '—'}"
-                    )
-                    bot.send_message(
-                        tg_id,
-                        user_msg,
-                        reply_markup=kb,
-                        parse_mode="Markdown"
-                    )
-
-                    topic_msg = (
-                        f"🆕 *Новая задача* у пользователя `{tg_id}`: *{item['title']}*\n"
-                        f"Board: {item['board_title']}\n"
-                        f"Column: {item['stack_title']}\n"
-                        f"Due: `{item['duedate'] or '—'}`"
-                    )
-                    send_log(topic_msg)
-
-        time.sleep(POLL_INTERVAL)
+# def poll_new_tasks():
+#     while True:
+#         for tg_id, login in get_user_list():
+#             conn = get_mysql_connection()
+#             cursor = conn.cursor()
+#             cursor.execute("SELECT card_id FROM tasks WHERE tg_id = %s", (tg_id,))
+#             saved_ids = {r[0] for r in cursor.fetchall()}
+#             cursor.close()
+#             conn.close()
+#
+#             current = fetch_user_tasks(login)
+#             current_ids = {item['card_id'] for item in current}
+#
+#             new_ids = current_ids - saved_ids
+#
+#             for item in current:
+#                 if item['card_id'] in new_ids:
+#                     save_task_to_db(
+#                         tg_id,
+#                         item['card_id'],
+#                         item['title'],
+#                         item['description'],
+#                         item['board_id'],
+#                         item['board_title'],
+#                         item['stack_id'],
+#                         item['stack_title'],
+#                         item['duedate']
+#                     )
+#
+#                     kb = InlineKeyboardMarkup()
+#                     if item['prev_stack_id'] is not None:
+#                         kb.add(InlineKeyboardButton(
+#                             text=f"⬅ {item['prev_stack_title']}",
+#                             callback_data=(
+#                                 f"move:{item['board_id']}:"
+#                                 f"{item['stack_id']}:"
+#                                 f"{item['card_id']}:"
+#                                 f"{item['prev_stack_id']}"
+#                             )
+#                         ))
+#                     if item['next_stack_id'] is not None:
+#                         kb.add(InlineKeyboardButton(
+#                             text=f"➡ {item['next_stack_title']}",
+#                             callback_data=(
+#                                 f"move:{item['board_id']}:"
+#                                 f"{item['stack_id']}:"
+#                                 f"{item['card_id']}:"
+#                                 f"{item['next_stack_id']}"
+#                             )
+#                         ))
+#                     user_msg = (
+#                         f"🆕 Новая задача: *{item['title']}*\n"
+#                         f"Board: {item['board_title']}\n"
+#                         f"Column: {item['stack_title']}\n"
+#                         f"Due: {item['duedate'] or '—'}\n"
+#                         f"{item['description'] or '—'}"
+#                     )
+#                     bot.send_message(
+#                         tg_id,
+#                         user_msg,
+#                         reply_markup=kb,
+#                         parse_mode="Markdown"
+#                     )
+#
+#                     topic_msg = (
+#                         f"🆕 *Новая задача* у пользователя `{tg_id}`: *{item['title']}*\n"
+#                         f"Board: {item['board_title']}\n"
+#                         f"Column: {item['stack_title']}\n"
+#                         f"Due: `{item['duedate'] or '—'}`"
+#                     )
+#                     send_log(topic_msg)
+#
+#         time.sleep(POLL_INTERVAL)
 
 
 def send_log(text):
