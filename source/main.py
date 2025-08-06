@@ -319,6 +319,60 @@ def fetch_user_tasks(login):
                     })
     return result
 
+def fetch_all_tasks():
+    result = []
+    boards_resp = requests.get(f"{BASE_URL}/boards", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
+    boards_resp.raise_for_status()
+    boards = boards_resp.json()
+    for board in boards:
+        if board.get('archived', True):
+            continue
+        board_id = board['id']
+        board_title = board['title']
+        stacks_resp = requests.get(f"{BASE_URL}/boards/{board_id}/stacks?details=true", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
+        stacks_resp.raise_for_status()
+        stacks = sorted(stacks_resp.json(), key=lambda s: s['order'])
+        for idx, stack in enumerate(stacks):
+            stack_id = stack['id']
+            stack_title = stack['title']
+            cards = stack.get('cards') or []
+            if not cards:
+                stack_data = requests.get(f"{BASE_URL}/boards/{board_id}/stacks/{stack_id}?details=true", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
+                stack_data.raise_for_status()
+                cards = stack_data.json().get('cards', [])
+            for card in cards:
+                duedate_iso = card.get('duedate')
+                duedate_dt = None
+                if duedate_iso:
+                    duedate_dt = datetime.fromisoformat(duedate_iso)
+                    duedate_dt = duedate_dt.astimezone(timezone.utc)
+                    duedate_dt = duedate_dt.replace(tzinfo=None)
+
+                assigned_logins = [u['participant']['uid'] for u in (card.get('assignedUsers') or [])]
+
+                prev_stack_id = stacks[idx - 1]['id'] if idx > 0 else None
+                prev_stack_title = stacks[idx - 1]['title'] if idx > 0 else None
+                next_stack_id = stacks[idx + 1]['id'] if idx < len(stacks) - 1 else None
+                next_stack_title = stacks[idx + 1]['title'] if idx < len(stacks) - 1 else None
+
+                result.append({
+                    'card_id': card['id'],
+                    'title': card['title'],
+                    'description': card.get('description', ''),
+                    'board_id': board_id,
+                    'board_title': board_title,
+                    'stack_id': stack_id,
+                    'stack_title': stack_title,
+                    'prev_stack_id': prev_stack_id,
+                    'prev_stack_title': prev_stack_title,
+                    'next_stack_id': next_stack_id,
+                    'next_stack_title': next_stack_title,
+                    'duedate': duedate_dt,
+                    'assigned_logins': assigned_logins
+                })
+    return result
+
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("move:"))
 def handle_card_move(call):
     _, board_id, current_stack_id, card_id, new_stack_id = call.data.split(":")
@@ -444,6 +498,17 @@ def send_log(text, board_id=None):
 def poll_new_tasks():
     MSK = timezone(timedelta(hours=3))
     while True:
+        conn = get_mysql_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT tg_id, nc_login FROM users")
+        login_map = {row[1]: row[0] for row in cursor.fetchall()}
+        cursor.close()
+        conn.close()
+
+        all_cards = fetch_all_tasks()
+
+
+
         users = get_user_list()
         for tg_id, login in users:
             current = fetch_user_tasks(login)
