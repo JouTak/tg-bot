@@ -26,3 +26,11 @@ CREATE TABLE IF NOT EXISTS tasks (
 ) ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS board_log_topics (
+  board_id         INT NOT NULL PRIMARY KEY,
+  message_thread_id BIGINT NOT NULL,
+  created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB
+  DEFAULT CHARSET=utf8mb4
+  COLLATE=utf8mb4_unicode_ci;
