@@ -1,5 +1,5 @@
-CREATE DATABASE IF NOT EXISTS joutakbot CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE joutakbot;
+CREATE DATABASE IF NOT EXISTS itmocraft_tg_bot CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE itmocraft_tg_bot;
 
 CREATE TABLE IF NOT EXISTS users (
   tg_id     BIGINT        NOT NULL PRIMARY KEY,
