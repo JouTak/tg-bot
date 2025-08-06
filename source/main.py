@@ -7,7 +7,7 @@ import requests
 import mysql.connector
 from requests.auth import HTTPBasicAuth
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -364,6 +364,7 @@ def send_log(text):
     )
 
 def poll_new_tasks():
+    MSK = timezone(timedelta(hours=3))
     while True:
         users = get_user_list()
         for tg_id, login in users:
@@ -405,10 +406,14 @@ def poll_new_tasks():
                     changes = []
                     if old['stack_id'] != item['stack_id']:
                         changes.append(f"Колонка: *{old['stack_title']}* → *{item['stack_title']}*")
-                    od = old['duedate'].isoformat() if old['duedate'] else None
-                    nd = item['duedate'].isoformat() if item['duedate'] else None
+
+                    UTC = timezone.utc
+                    od = old['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%Y-%m-%dT%H:%M") if old['duedate'] else None
+                    nd = item['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%Y-%m-%dT%H:%M") if item['duedate'] else None
                     if od != nd:
                         changes.append(f"Due: `{od or '—'}` → `{nd or '—'}`")
+
+
                     if old['title'] != item['title']:
                         changes.append(f"Заголовок: `{old['title']}` → `{item['title']}`")
                     if old['description'] != item['description']:
