@@ -7,7 +7,7 @@ import requests
 import mysql.connector
 from requests.auth import HTTPBasicAuth
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -220,7 +220,12 @@ def fetch_user_tasks(login):
                     next_stack_id = stacks[idx + 1]['id'] if idx < len(stacks) - 1 else None
                     next_stack_title = stacks[idx + 1]['title'] if idx < len(stacks) - 1 else None
                     duedate_iso = card.get('duedate')
-                    duedate_dt = datetime.fromisoformat(duedate_iso) if duedate_iso else None
+                    duedate_dt = None
+                    if duedate_iso:
+                        duedate_dt = datetime.fromisoformat(duedate_iso)
+                        duedate_dt = duedate_dt.astimezone(timezone.utc)
+                        duedate_dt = duedate_dt.replace(tzinfo=None)
+
                     result.append({
                         'card_id': card['id'],
                         'title': card['title'],
