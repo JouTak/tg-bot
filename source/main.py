@@ -124,14 +124,14 @@ def get_tasks_from_db(tg_id):
     conn.close()
     return set(r[0] for r in rows)
 
-def save_task_to_db(tg_id, card_id, title, description, board_id, board_title, stack_id, stack_title, duedate):
+def save_task_to_db(card_id, title, description, board_id, board_title, stack_id, stack_title, duedate):
     conn = get_mysql_connection()
     cursor = conn.cursor()
     cursor.execute(
         """
         INSERT INTO tasks
-          (tg_id, card_id, title, description, board_id, board_title, stack_id, stack_title, duedate)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+          (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE
           title=VALUES(title),
           description=VALUES(description),
@@ -142,7 +142,6 @@ def save_task_to_db(tg_id, card_id, title, description, board_id, board_title, s
           duedate=VALUES(duedate)
         """,
         (
-            tg_id,
             card_id,
             title,
             description,
@@ -290,7 +289,6 @@ def show_user_cards(message):
     tasks = fetch_user_tasks(login)
     for t in tasks:
         save_task_to_db(
-            chat_id,
             t['card_id'],
             t['title'],
             t['description'],
