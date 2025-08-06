@@ -127,15 +127,26 @@ bot = telebot.TeleBot(BOT_TOKEN)
 @bot.message_handler(commands=['start'])
 def start_handler(message):
     chat_id = message.chat.id
-    bot.send_message(chat_id, "Введите свой логин Nextcloud:")
+    if message.chat.type != "private":
+        bot.send_message(chat_id, "Эта команда может использоваться только в лс с ботом", message_thread_id=message.message_thread_id)
+        return
+    if get_login_by_tg_id(message.chat.id)==None:
+        bot.send_message(chat_id, "Введите свой логин cloud.joutak.ru:")
+    else:
+        bot.send_message(chat_id, "Ваш логин уже имеется в базе данных. Если его необходимо сменить - обратитесь к администратору.")
 
 @bot.message_handler(commands=['mycards'])
 def show_user_cards(message):
     chat_id = message.chat.id
+    if message.chat.type != "private":
+        bot.send_message(chat_id, "Эта команда может использоваться только в лс с ботом", message_thread_id=message.message_thread_id)
+        return
+
     saved_login = get_login_by_tg_id(chat_id)
     if not saved_login:
         bot.send_message(chat_id, "Сначала отправьте логин командой /start.")
         return
+
     login = saved_login
     bot.send_message(chat_id, "Ищу задачи...")
     tasks = fetch_user_tasks(login)
@@ -173,6 +184,8 @@ def show_user_cards(message):
 
 @bot.message_handler(func=lambda msg: get_login_by_tg_id(msg.chat.id) is None)
 def save_login(message):
+    if message.chat.type != "private":
+        return
     chat_id = message.chat.id
     nc_login = message.text.strip()
     save_login_to_db(chat_id, nc_login)
