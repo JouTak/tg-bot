@@ -408,8 +408,8 @@ def poll_new_tasks():
                         changes.append(f"Колонка: *{old['stack_title']}* → *{item['stack_title']}*")
 
                     UTC = timezone.utc
-                    od = old['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%Y-%m-%dT%H:%M") if old['duedate'] else None
-                    nd = item['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%Y-%m-%dT%H:%M") if item['duedate'] else None
+                    od = old['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if old['duedate'] else None
+                    nd = item['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if item['duedate'] else None
                     if od != nd:
                         changes.append(f"Due: `{od or '—'}` → `{nd or '—'}`")
 
