@@ -13,10 +13,10 @@ from source.app_logging import logger
 from source.logging_service import send_log
 
 def poll_new_tasks():
-    logger.info(f"Запускается фоновый опрос клауда, частота: {POLL_INTERVAL} секунд!")
+    logger.info(f"CLOUD: Запускается фоновый опрос задач, частота: {POLL_INTERVAL} секунд!")
     MSK = timezone(timedelta(hours=3))
     while True:
-        logger.info(f"Начинается плановое получение задач:")
+        logger.info(f"CLOUD: Начинается плановое получение задач")
         changes_flag = False
         login_map = get_user_map()
         all_cards = fetch_all_tasks()
@@ -134,5 +134,5 @@ def poll_new_tasks():
                         board_id=item['board_id']
                     )
 
-        logger.info("изменения найдены." if changes_flag else "изменений не обнаружено.")
+        logger.info("CLOUD: " + ("изменения найдены." if changes_flag else "изменений не обнаружено."))
         time.sleep(POLL_INTERVAL)
