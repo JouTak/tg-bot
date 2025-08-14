@@ -12,7 +12,7 @@ from source.db.repos.tasks import (
 )
 from source.app_logging import logger
 from source.logging_service import send_log
-from source.formatting import mdv2_escape as e, mdv2_code as c
+from source.links import card_url
 
 
 def poll_new_tasks():
@@ -27,6 +27,7 @@ def poll_new_tasks():
         stats_map = get_task_stats_map()
         for item in all_cards:
             card_id = item['card_id']
+            cid_link = f'<a href="{card_url(item["board_id"], card_id)}">{card_id}</a>'
             new_comments = int(item.get('comments_count', 0))
             new_attachments = int(item.get('attachments_count', 0))
             saved = saved_tasks.get(card_id)
@@ -70,21 +71,32 @@ def poll_new_tasks():
                 inc_comments = new_comments - int(old_stats.get('comments_count', 0))
                 inc_attachments = new_attachments - int(old_stats.get('attachments_count', 0))
 
+
                 if inc_comments > 0:
                     send_log(
                         "💬 Новые комментарии:" + "\n"
-                        f"{inc_comments} в «{item['title']}» — ID: {card_id}",
+                        f"{inc_comments} в «{item['title']}» — ID: {cid_link}",
                         board_id=item['board_id']
                     )
+                elif inc_comments < 0:
+                    send_log(
+                        "🗑 Удалены комментарии: "+"\n"
+                        f"{-inc_comments} в «{item['title']}» — ID: {cid_link}",
+                        board_id=item['board_id'])
 
                 if inc_attachments > 0:
                     send_log(
                         "📎 Новые вложения:" + "\n"
-                        f"{inc_attachments} в «{item['title']}» — ID: {card_id}",
+                        f"{inc_attachments} в «{item['title']}» — ID: {cid_link}",
                         board_id=item['board_id']
                     )
+                elif inc_attachments < 0:
+                    send_log(
+                        "🗑 Удалены вложения: "+"\n"
+                        f" {-inc_attachments} в «{item['title']}» — ID: {cid_link}",
+                        board_id=item['board_id'])
 
-                if (inc_comments > 0) or (inc_attachments > 0) or (card_id not in stats_map):
+                if (inc_comments != 0) or (inc_attachments != 0) or (card_id not in stats_map):
                     upsert_task_stats(card_id, new_comments, new_attachments)
 
             assigned_logins_db = get_task_assignees(card_id)
@@ -116,6 +128,7 @@ def poll_new_tasks():
                         f"Due: {item['duedate'] or '—'}\n"
                         f"{item['description'] or '-'}"
                     )
+                    kb.add(InlineKeyboardButton(text="Открыть в Deck", url=card_url(item["board_id"], card_id)))
                     send_message_limited(
                         tg_id,
                         user_msg,
@@ -143,6 +156,7 @@ def poll_new_tasks():
                         f"Due: {item['duedate'] or '—'}\n"
                         f"{item['description'] or '—'}"
                     )
+                    kb.add(InlineKeyboardButton(text="Открыть в Deck", url=card_url(item["board_id"], card_id)))
                     send_message_limited(
                         tg_id,
                         user_msg,
@@ -160,10 +174,10 @@ def poll_new_tasks():
                     for tg_id in tg_ids:
                         send_message_limited(
                             tg_id,
-                            f"✏️ *Изменения в карточке* «{item['title']}» — ID `{card_id}`:\n" + "\n".join(changes),
+                            f"✏️ *Изменения в карточке* «{item['title']}» — ID {cid_link}:\n" + "\n".join(changes),
                         )
                     send_log(
-                        f"✏️ *Изменения в карточке* «{item['title']}» — ID `{card_id}`:\n" + "\n".join(changes),
+                        f"✏️ *Изменения в карточке* «{item['title']}» — ID {cid_link}:\n" + "\n".join(changes),
                         board_id=item['board_id']
                     )
 
