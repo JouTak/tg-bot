@@ -68,16 +68,9 @@ def show_user_cards(message):
 def whereami(m):
     send_message_limited(
         m.chat.id,
+        f"Ты находишься в чате с chat_id = {m.chat.id}\n"
         f"Это тема с message_thread_id = {m.message_thread_id}",
         message_thread_id=m.message_thread_id
-    )
-
-@bot.message_handler(commands=['chatid'])
-def chatid(message):
-    send_message_limited(
-        message.chat.id,
-        f"chat_id = {message.chat.id}",
-        message_thread_id=message.message_thread_id
     )
 
 @bot.message_handler(commands=['setboardtopic'])
