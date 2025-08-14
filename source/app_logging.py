@@ -2,8 +2,10 @@ import os
 import logging
 from logging import FileHandler, StreamHandler, Formatter
 
+from source.config import APP_DEBUG
+
 logger = logging.getLogger("source")
-_APP_DEBUG = os.getenv("APP_DEBUG", "0") == "1"
+_APP_DEBUG = APP_DEBUG==1
 
 def is_debug() -> bool:
     return _APP_DEBUG
