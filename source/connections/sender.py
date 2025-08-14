@@ -33,7 +33,7 @@ _per_chat = defaultdict(lambda: TokenBucket(max_calls=1, period=1.0))  # ~1/s в
 
 _bold_pat = re.compile(r'\*(.+?)\*')       # *bold* -> <b>…</b>
 _code_pat = re.compile(r'`(.+?)`')         # `code` -> <code>…</code>
-
+_a_tag_pat = re.compile(r'<a\s+href="https?://[^"]+">.*?</a>', re.IGNORECASE | re.DOTALL)
 def _auto_html(text: str | None) -> str:
     """
        *жирный*  -> <b>жирный</b>
@@ -41,10 +41,20 @@ def _auto_html(text: str | None) -> str:
     """
     if not text:
         return ""
-    s = html.escape(str(text), quote=False)
+    raw = str(text)
+    anchors = []
+    def _stash(m):
+        anchors.append(m.group(0))
+        return f"__ANCHOR_{len(anchors) - 1}__"
+    stashed = _a_tag_pat.sub(_stash, raw)
+
+    s = html.escape(stashed, quote=False)
 
     s = _bold_pat.sub(lambda m: f"<b>{m.group(1)}</b>", s)
     s = _code_pat.sub(lambda m: f"<code>{m.group(1)}</code>", s)
+
+    for i, tag in enumerate(anchors):
+        s = s.replace(f"__ANCHOR_{i}__", tag)
     return s
 
 def send_message_limited(chat_id: int, text: str, **kwargs):
