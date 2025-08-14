@@ -1,0 +1,40 @@
+import time
+from collections import deque
+from source.connections.bot_factory import bot
+from source.app_logging import logger
+
+def _fmt_duration(seconds: float) -> str:
+    if seconds < 1:
+        return f"{int(round(seconds * 1000))} ms"
+    if seconds < 60:
+        return f"{seconds:.2f} s"
+    m, s = divmod(int(round(seconds)), 60)
+    return f"{m}m {s}s"
+
+class RateLimiter:
+    def __init__(self, max_calls: int, period: float, log_threshold: float = 1.0):
+        self.max_calls = max_calls
+        self.period = period
+        self.calls = deque()
+        self.log_threshold = log_threshold
+
+    def wait(self):
+        now = time.time()
+        while self.calls and self.calls[0] <= now - self.period:
+            self.calls.popleft()
+        if len(self.calls) >= self.max_calls:
+            sleep_time = self.period - (now - self.calls[0])
+            if sleep_time > 0:
+                msg = f"Лимит {self.max_calls}/{int(self.period)}s: пауза {_fmt_duration(sleep_time)}"
+                if sleep_time >= self.log_threshold:
+                    logger.warning(msg)
+                else:
+                    logger.debug(msg)
+                time.sleep(sleep_time)
+        self.calls.append(time.time())
+
+message_rate_limiter = RateLimiter(max_calls=20, period=60.0)
+
+def send_message_limited(*args, **kwargs):
+    message_rate_limiter.wait()
+    return bot.send_message(*args, **kwargs)
