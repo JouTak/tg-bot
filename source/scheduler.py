@@ -27,6 +27,8 @@ def poll_new_tasks():
         stats_map = get_task_stats_map()
         for item in all_cards:
             card_id = item['card_id']
+            new_comments = int(item.get('comments_count', 0))
+            new_attachments = int(item.get('attachments_count', 0))
             saved = saved_tasks.get(card_id)
             if not saved:
                 changes_flag = True
@@ -35,6 +37,11 @@ def poll_new_tasks():
                     item['board_id'], item['board_title'],
                     item['stack_id'], item['stack_title'], item['duedate']
                 )
+                upsert_task_stats(card_id, new_comments, new_attachments)
+                stats_map[card_id] = {
+                    "comments_count": new_comments,
+                    "attachments_count": new_attachments
+                }
             else:
                 changes = []
                 if saved['stack_id'] != item['stack_id']:
@@ -65,14 +72,14 @@ def poll_new_tasks():
 
                 if inc_comments > 0:
                     send_log(
-                        "💬 Новые комментарии:"
+                        "💬 Новые комментарии:" + "\n"
                         f"{inc_comments} в «{item['title']}» — ID: {card_id}",
                         board_id=item['board_id']
                     )
 
                 if inc_attachments > 0:
                     send_log(
-                        "📎 Новые вложения:"
+                        "📎 Новые вложения:" + "\n"
                         f"{inc_attachments} в «{item['title']}» — ID: {card_id}",
                         board_id=item['board_id']
                     )

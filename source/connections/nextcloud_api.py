@@ -49,7 +49,6 @@ def fetch_user_tasks(login):
                 sd.raise_for_status(); cards = sd.json().get('cards', [])
             for card in cards:
                 assigned = [u['participant']['uid'] for u in (card.get('assignedUsers') or [])]
-                comments_count, attachments_count = _extract_counts(card)
                 if login in assigned:
                     prev_stack_id = stacks[idx - 1]['id'] if idx > 0 else None
                     prev_stack_title = stacks[idx - 1]['title'] if idx > 0 else None
@@ -58,6 +57,7 @@ def fetch_user_tasks(login):
                     duedate_iso = card.get('duedate'); duedate_dt = None
                     if duedate_iso:
                         duedate_dt = datetime.fromisoformat(duedate_iso).astimezone(timezone.utc).replace(tzinfo=None)
+                    comments_count, attachments_count = _extract_counts(card)
                     result.append({
                         'card_id': card['id'], 'title': card['title'], 'description': card.get('description', ''),
                         'board_id': board_id, 'board_title': board_title,
@@ -101,7 +101,7 @@ def fetch_all_tasks():
                 comments_count = None
                 attachments_count = None
                 if 'commentsCount' in card or 'attachmentCount' in card:
-                    comments_count = card.get('comments') or 0
+                    comments_count = card.get('commentsCount') or 0
                     attachments_count = card.get('attachmentCount') or 0
                 else:
                     if 'commentsCount' in card: comments_count = int(card['commentsCount'])
