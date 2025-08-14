@@ -58,13 +58,13 @@ def show_user_cards(message):
                 callback_data=f"move:{t['board_id']}:{t['stack_id']}:{t['card_id']}:{t['next_stack_id']}"
             ))
         msg = (
-            f"{e(t['title'])}\n"
-            f"Board: {e(t['board_title'])}\n"
-            f"Column: {e(t['stack_title'])}\n"
-            f"Due: {c(t['duedate'] or '—')}\n"
-            f"{e(t['description'] or '—')}"
+            f"{t['title']}\n"
+            f"Board: {t['board_title']}\n"
+            f"Column: {t['stack_title']}\n"
+            f"Due: {t['duedate'] or '—'}\n"
+            f"{t['description'] or '—'}"
         )
-        send_message_limited(chat_id, msg, reply_markup=kb, parse_mode="MarkdownV2")
+        send_message_limited(chat_id, msg, reply_markup=kb)
 
 @bot.message_handler(commands=['whereami'])
 def whereami(m):
@@ -109,4 +109,4 @@ def save_login(message):
     chat_id = message.chat.id
     nc_login = message.text.strip()
     save_login_to_db(chat_id, nc_login)
-    send_message_limited(chat_id, f"Логин `{nc_login}` сохранён.", parse_mode="MarkdownV2")
+    send_message_limited(chat_id, f"Логин `{nc_login}` сохранён.")

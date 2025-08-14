@@ -7,6 +7,5 @@ def send_log(text, board_id=None):
     send_message_limited(
         FORUM_CHAT_ID,
         text,
-        parse_mode="MarkdownV2",
         message_thread_id=message_thread_id
     )
