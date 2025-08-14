@@ -29,6 +29,12 @@ CREATE TABLE IF NOT EXISTS task_assignees (
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS task_stats (
+  card_id BIGINT PRIMARY KEY,
+  comments_count INT NOT NULL DEFAULT 0,
+  attachments_count INT NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS board_log_topics (
   board_id         INT NOT NULL PRIMARY KEY,
   message_thread_id BIGINT NOT NULL,

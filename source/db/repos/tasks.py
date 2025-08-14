@@ -105,3 +105,29 @@ def update_task_in_db(card_id, title, description, board_id, board_title, stack_
     conn.commit()
     cursor.close()
     conn.close()
+
+def get_task_stats_map():
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT card_id, comments_count, attachments_count FROM task_stats")
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return {row[0]: {"comments_count": row[1], "attachments_count": row[2]} for row in rows}
+
+def upsert_task_stats(card_id: int, comments_count: int, attachments_count: int):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO task_stats (card_id, comments_count, attachments_count)
+        VALUES (%s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+          comments_count = VALUES(comments_count),
+          attachments_count = VALUES(attachments_count)
+        """,
+        (card_id, comments_count, attachments_count)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
