@@ -21,6 +21,8 @@ MYSQL_DB = os.getenv("MYSQL_DB")
 
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "60"))
 
+APP_DEBUG = os.getenv("APP_DEBUG", "0")
+
 missing = [k for k in (
     "BOT_TOKEN","BASE_URL","NEXTCLOUD_USER","NEXTCLOUD_PASS",
     "MYSQL_USER","MYSQL_PASS","MYSQL_DB") if not os.getenv(k)]

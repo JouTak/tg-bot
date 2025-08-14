@@ -1,6 +1,7 @@
 import time
 from collections import deque
 from source.connections.bot_factory import bot
+from source.app_logging import logger
 
 class RateLimiter:
     def __init__(self, max_calls, period):
@@ -15,6 +16,7 @@ class RateLimiter:
         if len(self.calls) >= self.max_calls:
             sleep_time = self.period - (now - self.calls[0])
             if sleep_time > 0:
+                logger.warn(f"Отправка сообщений приостановлена на {sleep_time}")
                 time.sleep(sleep_time)
         self.calls.append(time.time())
 

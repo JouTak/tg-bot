@@ -9,11 +9,15 @@ from source.db.repos.tasks import (
     get_saved_tasks, save_task_basic, update_task_in_db,
     get_task_assignees, save_task_assignee
 )
+from source.app_logging import logger
 from source.logging_service import send_log
 
 def poll_new_tasks():
+    logger.info(f"Запускается фоновый опрос клауда, частота: {POLL_INTERVAL} секунд!")
     MSK = timezone(timedelta(hours=3))
     while True:
+        logger.info(f"Начинается плановое получение задач:")
+        changes_flag = False
         login_map = get_user_map()
         all_cards = fetch_all_tasks()
         saved_tasks = get_saved_tasks()
@@ -21,6 +25,7 @@ def poll_new_tasks():
             card_id = item['card_id']
             saved = saved_tasks.get(card_id)
             if not saved:
+                changes_flag = True
                 save_task_basic(
                     card_id, item['title'], item['description'],
                     item['board_id'], item['board_title'],
@@ -40,6 +45,7 @@ def poll_new_tasks():
                 if saved['description'] != item['description']:
                     changes.append(f"Описание изменилось")
                 if changes:
+                    changes_flag = True
                     update_task_in_db(
                         card_id, item['title'], item['description'],
                         item['board_id'], item['board_title'],
@@ -127,4 +133,6 @@ def poll_new_tasks():
                         f"✏️ *Изменения в карточке* «{item['title']}» (ID `{card_id}`):\n" + "\n".join(changes),
                         board_id=item['board_id']
                     )
+
+        logger.info("изменения найдены." if changes_flag else "изменений не обнаружено.")
         time.sleep(POLL_INTERVAL)

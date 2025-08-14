@@ -1,4 +1,6 @@
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+from source.app_logging import logger
 from source.connections.bot_factory import bot
 from source.connections.sender import send_message_limited
 from source.db.repos.users import get_login_by_tg_id, save_login_to_db
@@ -19,6 +21,7 @@ def start_handler(message):
 
 @bot.message_handler(commands=['mycards'])
 def show_user_cards(message):
+    logger.info("Поступила команда /mycards")
     chat_id = message.chat.id
     if message.chat.type != "private":
         send_message_limited(chat_id, "Эта команда может использоваться только в лс с ботом", message_thread_id=message.message_thread_id)
@@ -103,8 +106,9 @@ def set_board_topic_handler(message):
     save_board_topic(board_id, thread_id)
     send_message_limited(chat_id, f"Этот топик (ID {thread_id}) привязан к доске {board_title} (ID: {board_id})", message_thread_id=message.message_thread_id)
 
-@bot.message_handler(func=lambda msg: get_login_by_tg_id(msg.chat.id) is None)
+@bot.message_handler(func=lambda msg: bool(getattr(msg, "text", "")) and not msg.text.startswith('/') and get_login_by_tg_id(msg.chat.id) is None)
 def save_login(message):
+    logger.info(f"Свободный текст в ЛС (сохранение логина) от user_id={message.from_user.id}")
     if message.chat.type != "private":
         return
     chat_id = message.chat.id
