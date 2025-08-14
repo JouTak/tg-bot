@@ -7,7 +7,6 @@ from source.db.repos.users import get_login_by_tg_id, save_login_to_db
 from source.db.repos.tasks import save_task_to_db
 from source.db.repos.boards import save_board_topic
 from source.connections.nextcloud_api import fetch_user_tasks, get_board_title
-from source.formatting import mdv2_escape as e, mdv2_code as c
 
 
 @bot.message_handler(commands=['start'])
