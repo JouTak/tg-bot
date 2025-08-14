@@ -7,6 +7,8 @@ from source.db.repos.users import get_login_by_tg_id, save_login_to_db
 from source.db.repos.tasks import save_task_to_db
 from source.db.repos.boards import save_board_topic
 from source.connections.nextcloud_api import fetch_user_tasks, get_board_title
+from source.formatting import mdv2_escape as e, mdv2_code as c
+
 
 @bot.message_handler(commands=['start'])
 def start_handler(message):
@@ -56,13 +58,13 @@ def show_user_cards(message):
                 callback_data=f"move:{t['board_id']}:{t['stack_id']}:{t['card_id']}:{t['next_stack_id']}"
             ))
         msg = (
-            f"{t['title']}\n"
-            f"Board: {t['board_title']}\n"
-            f"Column: {t['stack_title']}\n"
-            f"Due: {t['duedate'] or '—'}\n"
-            f"{t['description'] or '—'}"
+            f"{e(t['title'])}\n"
+            f"Board: {e(t['board_title'])}\n"
+            f"Column: {e(t['stack_title'])}\n"
+            f"Due: {c(t['duedate'] or '—')}\n"
+            f"{e(t['description'] or '—')}"
         )
-        send_message_limited(chat_id, msg, reply_markup=kb, parse_mode="Markdown")
+        send_message_limited(chat_id, msg, reply_markup=kb, parse_mode="MarkdownV2")
 
 @bot.message_handler(commands=['whereami'])
 def whereami(m):
@@ -107,4 +109,4 @@ def save_login(message):
     chat_id = message.chat.id
     nc_login = message.text.strip()
     save_login_to_db(chat_id, nc_login)
-    send_message_limited(chat_id, f"Логин `{nc_login}` сохранён.", parse_mode="Markdown")
+    send_message_limited(chat_id, f"Логин `{nc_login}` сохранён.", parse_mode="MarkdownV2")

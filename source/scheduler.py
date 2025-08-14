@@ -11,6 +11,8 @@ from source.db.repos.tasks import (
 )
 from source.app_logging import logger
 from source.logging_service import send_log
+from source.formatting import mdv2_escape as e, mdv2_code as c
+
 
 def poll_new_tasks():
     logger.info(f"CLOUD: Запускается фоновый опрос задач, частота: {POLL_INTERVAL} секунд!")
@@ -34,14 +36,14 @@ def poll_new_tasks():
             else:
                 changes = []
                 if saved['stack_id'] != item['stack_id']:
-                    changes.append(f"Колонка: *{saved['stack_title']}* → *{item['stack_title']}*")
+                    changes.append(f"Колонка: *{e(saved['stack_title'])}* → *{e(item['stack_title'])}*")
                 UTC = timezone.utc
                 od = saved['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if saved['duedate'] else None
                 nd = item['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if item['duedate'] else None
                 if od != nd:
-                    changes.append(f"Due: `{od or '—'}` → `{nd or '—'}`")
+                    changes.append(f"Due: `{c(od or '—')}` → `{c(nd or '—')}`")
                 if saved['title'] != item['title']:
-                    changes.append(f"Заголовок: `{saved['title']}` → `{item['title']}`")
+                    changes.append(f"Заголовок: `{c(saved['title'])}` → `{c(item['title'])}`")
                 if saved['description'] != item['description']:
                     changes.append(f"Описание изменилось")
                 if changes:
@@ -84,7 +86,7 @@ def poll_new_tasks():
                         tg_id,
                         user_msg,
                         reply_markup=kb,
-                        parse_mode="Markdown"
+                        parse_mode="MarkdownV2"
                     )
             if not saved:
                 for tg_id in tg_ids:
@@ -112,13 +114,13 @@ def poll_new_tasks():
                         tg_id,
                         user_msg,
                         reply_markup=kb,
-                        parse_mode="Markdown"
+                        parse_mode="MarkdownV2"
                     )
                 send_log(
-                    f"🆕 *Новая задача*: {item['title']}\n"
-                    f"Board: {item['board_title']}\n"
-                    f"Column: {item['stack_title']}\n"
-                    f"Due: {item['duedate'] or '—'}",
+                    f"🆕 *Новая задача*: {e(item['title'])}\n"
+                    f"Board: {e(item['board_title'])}\n"
+                    f"Column: {e(item['stack_title'])}\n"
+                    f"Due: {c(item['duedate']) or '—'}",
                     board_id=item['board_id']
                 )
             else:
@@ -126,11 +128,11 @@ def poll_new_tasks():
                     for tg_id in tg_ids:
                         send_message_limited(
                             tg_id,
-                            f"✏️ *Изменения в карточке* «{item['title']}» (ID `{card_id}`):\n" + "\n".join(changes),
-                            parse_mode="Markdown"
+                            f"✏️ *Изменения в карточке* «{e(item['title'])}» — ID `{e(card_id)}`:\n" + "\n".join(changes),
+                            parse_mode="MarkdownV2"
                         )
                     send_log(
-                        f"✏️ *Изменения в карточке* «{item['title']}» (ID `{card_id}`):\n" + "\n".join(changes),
+                        f"✏️ *Изменения в карточке* «{e(item['title'])}» — ID `{e(card_id)}`:\n" + "\n".join(changes),
                         board_id=item['board_id']
                     )
 
