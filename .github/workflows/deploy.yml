@@ -2,19 +2,27 @@ name: Deploy on Push
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            source/requirements.txt
 
       - name: Install dependencies
         run: |
@@ -31,11 +39,14 @@ jobs:
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
 
   deploy:
+    name: Deploy to PROD
+    if: github.ref == 'refs/heads/main'
     needs: test
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
-      - name: Execute SSH Commands
+      - name: Deploy via SSH (prod)
         uses: GPTED/SSH-My-Action@0.1
         with:
           HOST: ${{ secrets.SSH_HOST }}
@@ -43,8 +54,12 @@ jobs:
           PORT: ${{ secrets.PORT }}
           PRIVATE_KEY: ${{ secrets.BOT_DEV_SSH_PRIVATE_KEY }}
           CMD: |
-            cd /srv/bots/tg-itmocraft/app;
-            git reset --hard HEAD;
-            git pull;
-            cd /srv/bots/tg-itmocraft;
-            podman-compose up -d --build --force-recreate;
+            set -euo pipefail
+            cd /srv/bots/tg-itmocraft/app
+            echo "[PROD] current: $(git rev-parse --short HEAD)"
+            git fetch --all
+            git reset --hard origin/main
+            echo "[PROD] updated: $(git rev-parse --short HEAD)"
+
+            cd /srv/bots/tg-itmocraft
+            podman-compose up -d --build --force-recreate
