@@ -39,7 +39,7 @@ jobs:
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
 
   deploy:
-    name: Deploy to PROD
+    name: Deploy
     if: github.ref == 'refs/heads/main'
     needs: test
     runs-on: ubuntu-latest
