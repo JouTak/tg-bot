@@ -181,7 +181,8 @@ def poll_new_tasks():
                         send_message_limited(
                             tg_id,
                             f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
-                            reply_markup=kb
+                            reply_markup=kb,
+
                         )
                     send_log(
                         f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),

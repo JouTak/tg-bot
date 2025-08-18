@@ -66,7 +66,7 @@ def send_message_limited(chat_id: int, text: str, **kwargs):
     kwargs["parse_mode"] = "HTML"
 
     try:
-        return bot.send_message(chat_id, safe_text, parse_mode="HTML", disable_web_page_preview=True)
+        return bot.send_message(chat_id, safe_text, **kwargs)
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
         logger.warning(f"Не смог отправить сообщение в chat_id={chat_id}: сеть недоступна ({'таймаут' if isinstance(e, requests.exceptions.Timeout) else 'нет соединения'}).")
         return None
