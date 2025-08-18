@@ -7,6 +7,7 @@ from source.scheduler import poll_new_tasks
 from source.connections.bot_factory import bot
 import source.handlers  # noqa: F401
 import source.callbacks  # noqa: F401
+from source.deadlines import poll_deadlines
 
 def _get(obj, name, default=None):
     try:
@@ -76,6 +77,8 @@ def run():
         bot.remove_webhook()
 
     threading.Thread(target=poll_new_tasks, daemon=True).start()
+    threading.Thread(target=poll_deadlines, daemon=True).start()
+
     if is_debug():
         bot.set_update_listener(_updates_listener)
 

@@ -14,6 +14,9 @@ from source.app_logging import logger
 from source.logging_service import send_log
 from source.links import card_url
 
+# def _create_link(board_id, card_id, message: str):
+#     link =  f'<a href="{card_url(board_id, card_id)}">{message}</a>'
+#     return link
 
 def poll_new_tasks():
     logger.info(f"CLOUD: Запускается фоновый опрос задач, частота: {POLL_INTERVAL} секунд!")
@@ -26,7 +29,7 @@ def poll_new_tasks():
         saved_tasks = get_saved_tasks()
         stats_map = get_task_stats_map()
         for item in all_cards:
-            card_id = item['card_id']
+            card_id = item['card_id']; board_id = item['board_id']
             cid_link = f'<a href="{card_url(item["board_id"], card_id)}">{card_id}</a>'
             new_comments = int(item.get('comments_count', 0))
             new_attachments = int(item.get('attachments_count', 0))
@@ -65,6 +68,7 @@ def poll_new_tasks():
                     )
 
                 old_stats = stats_map.get(card_id, {"comments_count": 0, "attachments_count": 0})
+                old_stats = stats_map.get(card_id, {"comments_count": 0, "attachments_count": 0})
                 new_comments = int(item.get('comments_count', 0))
                 new_attachments = int(item.get('attachments_count', 0))
 
@@ -75,25 +79,25 @@ def poll_new_tasks():
                 if inc_comments > 0:
                     send_log(
                         "💬 Новые комментарии:" + "\n"
-                        f"{inc_comments} в «{item['title']}» — ID: {cid_link}",
+                        f"{inc_comments} в «{item['title']}» (ID: {cid_link})",
                         board_id=item['board_id']
                     )
                 elif inc_comments < 0:
                     send_log(
                         "🗑 Удалены комментарии: "+"\n"
-                        f"{-inc_comments} в «{item['title']}» — ID: {cid_link}",
+                        f"{-inc_comments} в «{item['title']}» (ID: {cid_link})",
                         board_id=item['board_id'])
 
                 if inc_attachments > 0:
                     send_log(
                         "📎 Новые вложения:" + "\n"
-                        f"{inc_attachments} в «{item['title']}» — ID: {cid_link}",
+                        f"{inc_attachments} в «{item['title']}» (ID: {cid_link})",
                         board_id=item['board_id']
                     )
                 elif inc_attachments < 0:
                     send_log(
                         "🗑 Удалены вложения: "+"\n"
-                        f" {-inc_attachments} в «{item['title']}» — ID: {cid_link}",
+                        f" {-inc_attachments} в «{item['title']}» (ID: {cid_link})",
                         board_id=item['board_id'])
 
                 if (inc_comments != 0) or (inc_attachments != 0) or (card_id not in stats_map):
@@ -128,7 +132,7 @@ def poll_new_tasks():
                         f"Due: {item['duedate'] or '—'}\n"
                         f"{item['description'] or '-'}"
                     )
-                    kb.add(InlineKeyboardButton(text="Открыть в Deck", url=card_url(item["board_id"], card_id)))
+                    kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                     send_message_limited(
                         tg_id,
                         user_msg,
@@ -156,14 +160,14 @@ def poll_new_tasks():
                         f"Due: {item['duedate'] or '—'}\n"
                         f"{item['description'] or '—'}"
                     )
-                    kb.add(InlineKeyboardButton(text="Открыть в Deck", url=card_url(item["board_id"], card_id)))
+                    kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                     send_message_limited(
                         tg_id,
                         user_msg,
                         reply_markup=kb,
                     )
                 send_log(
-                    f"🆕 *Новая задача*: {item['title']}\n"
+                    f"🆕 *Новая задача* c ID {cid_link}: {item['title']}\n"
                     f"Board: {item['board_title']}\n"
                     f"Column: {item['stack_title']}\n"
                     f"Due: {item['duedate'] or '—'}",
@@ -172,12 +176,15 @@ def poll_new_tasks():
             else:
                 if changes:
                     for tg_id in tg_ids:
+                        kb = InlineKeyboardMarkup()
+                        kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                         send_message_limited(
                             tg_id,
-                            f"✏️ *Изменения в карточке* «{item['title']}» — ID {cid_link}:\n" + "\n".join(changes),
+                            f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
+                            reply_markup=kb
                         )
                     send_log(
-                        f"✏️ *Изменения в карточке* «{item['title']}» — ID {cid_link}:\n" + "\n".join(changes),
+                        f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
                         board_id=item['board_id']
                     )
 
