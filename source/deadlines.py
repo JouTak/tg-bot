@@ -10,12 +10,12 @@ from source.db.repos.deadlines import get_sent_map_for_period, mark_sent
 from source.connections.sender import send_message_limited
 from source.links import card_url
 
-from source.config import DEADLINES_INTERVAL as _DEADLINES_INTERVAL, APP_DEBUG, TIMEZONE as _TIMEZONE_NAME, QUIET_HOURS
+from source.config import DEADLINES_INTERVAL, TIMEZONE, QUIET_HOURS
 
-DEADLINES_INTERVAL = int(_DEADLINES_INTERVAL)
+DEADLINES_INTERVAL = int(DEADLINES_INTERVAL)
 
 try:
-    TEAM_TZ = ZoneInfo(_TIMEZONE_NAME)
+    TEAM_TZ = ZoneInfo(TIMEZONE)
 except Exception:
     TEAM_TZ = timezone(timedelta(hours=3))
 
@@ -27,8 +27,6 @@ def _parse_quiet(s: str) -> tuple[int, int]:
         return (0, 1)
 
 QUIET_START, QUIET_END = _parse_quiet(QUIET_HOURS)
-
-STAGES = ("pre_7d", "pre_24h", "pre_2h", "due", "post_2h", "post_24h")
 
 def _at_team_10(utc_dt: datetime) -> datetime:
     local = utc_dt.astimezone(TEAM_TZ)
@@ -80,7 +78,6 @@ def _line_for_stage(stage: str, item: dict, now_utc: datetime) -> str:
 def poll_deadlines():
     logger.info(f"DEADLINES: старт фонового опроса, частота {DEADLINES_INTERVAL} сек!")
     while True:
-        #logger.info(f"DEADLINES: Начинается плановая проверка дедлайнов")
         try:
             now_utc = datetime.utcnow().replace(tzinfo=timezone.utc)
             now_local = now_utc.astimezone(TEAM_TZ)
@@ -108,15 +105,18 @@ def poll_deadlines():
                     continue
 
                 sched = _schedule_points(due)
+                STAGE_ORDER = ["pre_7d", "pre_24h", "pre_2h", "due", "post_2h", "post_24h"]
+                RANK = {s: i for i, s in enumerate(STAGE_ORDER)}
+
                 for login in assigned:
                     already = sent_map.get((item["card_id"], login), set())
-                    for stage, ts in sched.items():
-                        if stage in already:
-                            continue
-                        if now_utc >= ts:
-                            per_user.setdefault(login, []).append(
-                                (stage, _line_for_stage(stage, item, now_utc), item["card_id"])
-                            )
+                    candidates = [s for s, ts in _schedule_points(due).items() if s not in already and now_utc >= ts]
+                    if not candidates:
+                        continue
+                    chosen = max(candidates, key=lambda s: RANK[s])
+                    per_user.setdefault(login, []).append(
+                        (chosen, _line_for_stage(chosen, item, now_utc), item["card_id"])
+                    )
 
             priority = {"due": 0, "post_2h": 1, "post_24h": 2, "pre_2h": 3, "pre_24h": 4, "pre_7d": 5}
             for login, entries in per_user.items():
@@ -128,10 +128,11 @@ def poll_deadlines():
                 send_message_limited(tg_id, f"⏰ Напоминания о дедлайнах:\n{body}")
                 for stage, _, card_id in entries:
                     try:
-                        mark_sent(card_id, login, stage)
+                        idx = RANK[stage]
+                        for s in STAGE_ORDER[:idx + 1]:
+                            mark_sent(card_id, login, s)
                     except Exception as e:
                         logger.warning(f"DEADLINES: не удалось отметить отправку ({card_id}, {login}, {stage}): {e}")
         except Exception as e:
             logger.exception(f"DEADLINES: сбой цикла: {e}")
-
         time.sleep(DEADLINES_INTERVAL)
