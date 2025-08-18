@@ -75,11 +75,11 @@ def _line_for_stage(stage: str, item: dict, now_utc: datetime) -> str:
     due_s = _fmt_due_local(due)
     prefix = {
         "pre_7d":   "📅 Через неделю",
-        "pre_24h":  "⏰ Завтра",
+        "pre_24h":  "🌝 Завтра",
         "pre_2h":   "⏳ Через ~2 часа",
         "due":      "🔔 Срок наступил",
         "post_2h":  "⚠️ Просрочено на ~2 часа",
-        "post_24h": "🚨 Просрочено более чем на сутки",
+        "post_24h": "🌚 Просрочено более чем на сутки",
         "post_repeat": f"🔁 Просрочено уже {(now_utc - due).days} дн.",
     }.get(stage, "⏰ Напоминание")
     return f"— {prefix}: «{title}» — ID: {link} — {due_s} (Δ {rel})"
@@ -112,7 +112,7 @@ def poll_deadlines():
                 due = item.get("duedate")
                 if not due:
                     continue
-                if item.get("done"):
+                if item.get("done") is not None:
                     continue
                 if item.get("archived"):
                     continue
@@ -128,7 +128,7 @@ def poll_deadlines():
                         continue
                     chosen = max(candidates, key=lambda s: RANK[s])
                     per_user.setdefault(login, []).append(
-                        (chosen, _line_for_stage(chosen, item, now_utc), item["card_id"])
+                        (chosen, _line_for_stage(chosen, item, now_utc), item["card_id"], candidates)
                     )
 
             priority = {"due": 0, "post_2h": 1, "post_24h": 2, "post_repeat": 3, "pre_2h": 4, "pre_24h": 5, "pre_7d": 6}
@@ -138,12 +138,19 @@ def poll_deadlines():
                     continue
                 entries.sort(key=lambda x: (priority.get(x[0], 9), x[2]))
                 body = "\n".join(e[1] for e in entries)
-                send_message_limited(tg_id, f"⏰ Напоминания о дедлайнах:\n{body}")
-                for stage, _, card_id in entries:
-                    try:
-                        mark_sent(card_id, login, stage)
-                    except Exception as e:
-                        logger.warning(f"DEADLINES: не удалось отметить отправку ({card_id}, {login}, {stage}): {e}")
+                ok = send_message_limited(tg_id, f"⏰ Напоминания о дедлайнах:\n{body}")
+                if ok:
+                    for stage, _, card_id, candidates in entries:
+                        try:
+                            for s in candidates:
+                                if RANK[s] <= RANK[stage]:
+                                    mark_sent(card_id, login, s)
+                        except Exception as e:
+                            logger.warning(
+                                f"DEADLINES: не удалось отметить отправку ({card_id}, {login}, {stage}): {e}"
+                            )
+                else:
+                    logger.warning(f"DEADLINES: уведомления {login} ({tg_id}) не доставлены, пропускаю mark_sent")
         except Exception as e:
             logger.exception(f"DEADLINES: сбой цикла: {e}")
         time.sleep(DEADLINES_INTERVAL)
