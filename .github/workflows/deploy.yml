@@ -38,31 +38,31 @@ jobs:
         run: |
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
 
-deploy:
-  name: Deploy
-  if: github.ref == 'refs/heads/main'
-  needs: test
-  runs-on: ubuntu-latest
-  environment: production
+  deploy:
+    name: Deploy
+    if: github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
 
-  steps:
-    - name: Deploy via SSH (prod)
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.SSH_HOST }}
-        username: bot_dev
-        port: ${{ secrets.PORT }}
-        key: ${{ secrets.BOT_DEV_SSH_PRIVATE_KEY }}
-        script: |
-          set -eo pipefail
-          echo "[PROD] Deploy started on $(hostname)"
-
-          cd /srv/bots/tg-itmocraft/app
-          echo "[PROD] current: $(git rev-parse --short HEAD || echo none)"
-          git fetch --all --quiet
-          git reset --hard origin/main --quiet
-          echo "[PROD] updated: $(git rev-parse --short HEAD)"
-
-          cd /srv/bots/tg-itmocraft
-          podman-compose up -d --build --force-recreate
-          podman-compose logs --no-color --tail=50 tg-itmocraft || true
+    steps:
+      - name: Deploy via SSH (prod)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: bot_dev
+          port: ${{ secrets.PORT }}
+          key: ${{ secrets.BOT_DEV_SSH_PRIVATE_KEY }}
+          script: |
+            set -eo pipefail
+            echo "[PROD] Deploy started on $(hostname)"
+  
+            cd /srv/bots/tg-itmocraft/app
+            echo "[PROD] current: $(git rev-parse --short HEAD || echo none)"
+            git fetch --all --quiet
+            git reset --hard origin/main --quiet
+            echo "[PROD] updated: $(git rev-parse --short HEAD)"
+  
+            cd /srv/bots/tg-itmocraft
+            podman-compose up -d --build --force-recreate
+            podman-compose logs --no-color --tail=50 tg-itmocraft || true
