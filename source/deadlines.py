@@ -100,6 +100,10 @@ def poll_deadlines():
                 due = item.get("duedate")
                 if not due:
                     continue
+                if item.get("done"):
+                    continue
+                if item.get("archived"):
+                    continue
                 assigned = set(item.get("assigned_logins") or [])
                 if not assigned:
                     continue
