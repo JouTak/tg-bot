@@ -38,33 +38,31 @@ jobs:
         run: |
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
 
-  deploy:
-    name: Deploy
-    if: github.ref == 'refs/heads/main'
-    needs: test
-    runs-on: ubuntu-latest
-    environment: production
+deploy:
+  name: Deploy
+  if: github.ref == 'refs/heads/main'
+  needs: test
+  runs-on: ubuntu-latest
+  environment: production
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+  steps:
+    - name: Deploy via SSH (prod)
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: bot_dev
+        port: ${{ secrets.PORT }}
+        key: ${{ secrets.BOT_DEV_SSH_PRIVATE_KEY }}
+        script: |
+          set -eo pipefail
+          echo "[PROD] Deploy started on $(hostname)"
 
-      - name: git pull and podman restart
-        uses: GPTED/SSH-My-Action@0.1
-        with:
-          HOST: ${{ secrets.SSH_HOST }}
-          USER: bot_dev
-          PORT: ${{ secrets.PORT }}
-          PRIVATE_KEY: ${{ secrets.BOT_DEV_SSH_PRIVATE_KEY }}
-          CMD: |
-            set -euo pipefail
-            cd /srv/bots/tg-itmocraft/app
-  
-            echo "current: $(git rev-parse --short HEAD || echo none)"
-            git fetch --all
-            git reset --hard origin/main
-            echo "updated: $(git rev-parse --short HEAD)"
-            
-            podman-compose up -d --build --force-recreate
-            sleep 5
-            podman-compose logs --no-color --timestamps --tail=10 tg-itmocraft || true
+          cd /srv/bots/tg-itmocraft/app
+          echo "[PROD] current: $(git rev-parse --short HEAD || echo none)"
+          git fetch --all --quiet
+          git reset --hard origin/main --quiet
+          echo "[PROD] updated: $(git rev-parse --short HEAD)"
+
+          cd /srv/bots/tg-itmocraft
+          podman-compose up -d --build --force-recreate
+          podman-compose logs --no-color --tail=50 tg-itmocraft || true
