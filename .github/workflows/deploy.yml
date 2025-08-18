@@ -65,4 +65,4 @@ jobs:
   
             cd /srv/bots/tg-itmocraft
             podman-compose up -d --build --force-recreate
-            podman-compose logs --no-color --tail=50 tg-itmocraft || true
+            podman-compose logs --tail=50 tg-itmocraft || true
