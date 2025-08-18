@@ -22,6 +22,7 @@ MYSQL_DB = os.getenv("MYSQL_DB")
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "60"))
 DEADLINES_INTERVAL=int(os.getenv("DEADLINES_INTERVAL", "2"))
 QUIET_HOURS=os.getenv("QUIET_HOURS", "0-8")
+DEADLINE_REPEAT_DAYS=3
 TIMEZONE="Europe/Moscow"
 
 APP_DEBUG = os.getenv("APP_DEBUG", "0")
