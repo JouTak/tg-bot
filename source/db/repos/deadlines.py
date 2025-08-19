@@ -11,13 +11,22 @@ def ensure_tables():
             card_id BIGINT NOT NULL,
             login   VARCHAR(100) NOT NULL,
             stage   VARCHAR(32) NOT NULL,
-            sent_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (card_id, login, stage)
+            sent_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_card_login (card_id, login)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     """)
+    try:
+        cur.execute("ALTER TABLE deadline_reminders DROP PRIMARY KEY")
+    except Exception:
+        pass
+    try:
+        cur.execute("ALTER TABLE deadline_reminders ADD UNIQUE KEY uq_card_login (card_id, login)")
+    except Exception:
+        pass
     conn.commit()
     cur.close()
     conn.close()
+
 
 def get_sent_map_for_period() -> Dict[Tuple[int, str], Set[str]]:
     ensure_tables()
@@ -31,6 +40,7 @@ def get_sent_map_for_period() -> Dict[Tuple[int, str], Set[str]]:
         out.setdefault((int(card_id), str(login)), set()).add(str(stage))
     return out
 
+
 def mark_sent(card_id: int, login: str, stage: str) -> None:
     ensure_tables()
     conn = get_mysql_connection()
@@ -38,7 +48,16 @@ def mark_sent(card_id: int, login: str, stage: str) -> None:
     cur.execute("""
         INSERT INTO deadline_reminders (card_id, login, stage)
         VALUES (%s, %s, %s)
-        ON DUPLICATE KEY UPDATE sent_at = CURRENT_TIMESTAMP
+        ON DUPLICATE KEY UPDATE stage = VALUES(stage), sent_at = CURRENT_TIMESTAMP
     """, (card_id, login, stage))
+    conn.commit()
+    cur.close(); conn.close()
+
+
+def reset_sent_for_card(card_id: int) -> None:
+    ensure_tables()
+    conn = get_mysql_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM deadline_reminders WHERE card_id = %s", (card_id,))
     conn.commit()
     cur.close(); conn.close()
