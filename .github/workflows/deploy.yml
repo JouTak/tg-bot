@@ -58,13 +58,14 @@ jobs:
             echo "[PROD] Deploy started on $(hostname)"
   
             cd /srv/bots/tg-itmocraft/app
-            echo "[PROD] current: $(git rev-parse --short HEAD || echo none)"
+            echo "[PROD] current: "
+            git rev-parse --short HEAD
             git fetch --all --quiet
             git reset --hard origin/main --quiet
-            echo "[PROD] updated: $(git rev-parse --short HEAD)"
+            echo "[PROD] updated: "
+            git rev-parse --short HEAD
   
             cd /srv/bots/tg-itmocraft
             podman-compose up -d --build --force-recreate
             sleep 15
-            done
             podman-compose logs --tail=50 tg-bot || true
