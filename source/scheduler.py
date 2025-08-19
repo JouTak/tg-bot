@@ -22,172 +22,175 @@ def poll_new_tasks():
     logger.info(f"CLOUD: Запускается фоновый опрос задач, частота: {POLL_INTERVAL} секунд!")
     MSK = timezone(timedelta(hours=3))
     while True:
-        logger.info(f"CLOUD: Начинается плановое получение задач")
-        changes_flag = False
-        login_map = get_user_map()
-        all_cards = fetch_all_tasks()
-        saved_tasks = get_saved_tasks()
-        stats_map = get_task_stats_map()
-        for item in all_cards:
-            card_id = item['card_id']; board_id = item['board_id']
-            cid_link = f'<a href="{card_url(item["board_id"], card_id)}">{card_id}</a>'
-            new_comments = int(item.get('comments_count', 0))
-            new_attachments = int(item.get('attachments_count', 0))
-            saved = saved_tasks.get(card_id)
-            if not saved:
-                changes_flag = True
-                save_task_basic(
-                    card_id, item['title'], item['description'],
-                    item['board_id'], item['board_title'],
-                    item['stack_id'], item['stack_title'], item['duedate']
-                )
-                upsert_task_stats(card_id, new_comments, new_attachments)
-                stats_map[card_id] = {
-                    "comments_count": new_comments,
-                    "attachments_count": new_attachments
-                }
-            else:
-                changes = []
-                if saved['stack_id'] != item['stack_id']:
-                    changes.append(f"Колонка: *{saved['stack_title']}* → *{item['stack_title']}*")
-                UTC = timezone.utc
-                od = saved['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if saved['duedate'] else None
-                nd = item['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if item['duedate'] else None
-                if od != nd:
-                    changes.append(f"Due: `{od or '—'}` → `{nd or '—'}`")
-                if saved['title'] != item['title']:
-                    changes.append(f"Заголовок: `{saved['title']}` → `{item['title']}`")
-                if saved['description'] != item['description']:
-                    changes.append(f"Описание изменилось")
-                if changes:
+        try:
+            logger.info(f"CLOUD: Начинается плановое получение задач")
+            changes_flag = False
+            login_map = get_user_map()
+            all_cards = fetch_all_tasks()
+            saved_tasks = get_saved_tasks()
+            stats_map = get_task_stats_map()
+            for item in all_cards:
+                card_id = item['card_id']; board_id = item['board_id']
+                cid_link = f'<a href="{card_url(item["board_id"], card_id)}">{card_id}</a>'
+                new_comments = int(item.get('comments_count', 0))
+                new_attachments = int(item.get('attachments_count', 0))
+                saved = saved_tasks.get(card_id)
+                if not saved:
                     changes_flag = True
-                    update_task_in_db(
+                    save_task_basic(
                         card_id, item['title'], item['description'],
                         item['board_id'], item['board_title'],
                         item['stack_id'], item['stack_title'], item['duedate']
                     )
-
-                old_stats = stats_map.get(card_id, {"comments_count": 0, "attachments_count": 0})
-                old_stats = stats_map.get(card_id, {"comments_count": 0, "attachments_count": 0})
-                new_comments = int(item.get('comments_count', 0))
-                new_attachments = int(item.get('attachments_count', 0))
-
-                inc_comments = new_comments - int(old_stats.get('comments_count', 0))
-                inc_attachments = new_attachments - int(old_stats.get('attachments_count', 0))
-
-
-                if inc_comments > 0:
-                    send_log(
-                        "💬 Новые комментарии:" + "\n"
-                        f"{inc_comments} в «{item['title']}» (ID: {cid_link})",
-                        board_id=item['board_id']
-                    )
-                elif inc_comments < 0:
-                    send_log(
-                        "🗑 Удалены комментарии: "+"\n"
-                        f"{-inc_comments} в «{item['title']}» (ID: {cid_link})",
-                        board_id=item['board_id'])
-
-                if inc_attachments > 0:
-                    send_log(
-                        "📎 Новые вложения:" + "\n"
-                        f"{inc_attachments} в «{item['title']}» (ID: {cid_link})",
-                        board_id=item['board_id']
-                    )
-                elif inc_attachments < 0:
-                    send_log(
-                        "🗑 Удалены вложения: "+"\n"
-                        f" {-inc_attachments} в «{item['title']}» (ID: {cid_link})",
-                        board_id=item['board_id'])
-
-                if (inc_comments != 0) or (inc_attachments != 0) or (card_id not in stats_map):
                     upsert_task_stats(card_id, new_comments, new_attachments)
+                    stats_map[card_id] = {
+                        "comments_count": new_comments,
+                        "attachments_count": new_attachments
+                    }
+                else:
+                    changes = []
+                    if saved['stack_id'] != item['stack_id']:
+                        changes.append(f"Колонка: *{saved['stack_title']}* → *{item['stack_title']}*")
+                    UTC = timezone.utc
+                    od = saved['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if saved['duedate'] else None
+                    nd = item['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if item['duedate'] else None
+                    if od != nd:
+                        changes.append(f"Due: `{od or '—'}` → `{nd or '—'}`")
+                    if saved['title'] != item['title']:
+                        changes.append(f"Заголовок: `{saved['title']}` → `{item['title']}`")
+                    if saved['description'] != item['description']:
+                        changes.append(f"Описание изменилось")
+                    if changes:
+                        changes_flag = True
+                        update_task_in_db(
+                            card_id, item['title'], item['description'],
+                            item['board_id'], item['board_title'],
+                            item['stack_id'], item['stack_title'], item['duedate']
+                        )
 
-            assigned_logins_db = get_task_assignees(card_id)
-            assigned_logins_api = set(item.get('assigned_logins', []))
-            new_assignees = assigned_logins_api - assigned_logins_db
-            for login in new_assignees:
-                save_task_assignee(card_id, login)
-            tg_ids = [login_map[login] for login in assigned_logins_api if login in login_map]
-            for login in new_assignees:
-                tg_id = login_map.get(login)
-                if tg_id:
-                    kb = InlineKeyboardMarkup()
-                    prev_stack_id = item['prev_stack_id']
-                    next_stack_id = item['next_stack_id']
-                    if prev_stack_id is not None:
-                        kb.add(InlineKeyboardButton(
-                            text=f"⬅ {item['prev_stack_title']}",
-                            callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{prev_stack_id}"
-                        ))
-                    if next_stack_id is not None:
-                        kb.add(InlineKeyboardButton(
-                            text=f"➡ {item['next_stack_title']}",
-                            callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{next_stack_id}"
-                        ))
-                    user_msg = (
-                        f"🆕 Новая задача: *{item['title']}*\n"
-                        f"Board: {item['board_title']}\n"
-                        f"Column: {item['stack_title']}\n"
-                        f"Due: {item['duedate'] or '—'}\n"
-                        f"{item['description'] or '-'}"
-                    )
-                    kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
-                    send_message_limited(
-                        tg_id,
-                        user_msg,
-                        reply_markup=kb,
-                    )
-            if not saved:
-                for tg_id in tg_ids:
-                    kb = InlineKeyboardMarkup()
-                    prev_stack_id = item['prev_stack_id']
-                    next_stack_id = item['next_stack_id']
-                    if prev_stack_id is not None:
-                        kb.add(InlineKeyboardButton(
-                            text=f"⬅ {item['prev_stack_title']}",
-                            callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{prev_stack_id}"
-                        ))
-                    if next_stack_id is not None:
-                        kb.add(InlineKeyboardButton(
-                            text=f"➡ {item['next_stack_title']}",
-                            callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{next_stack_id}"
-                        ))
-                    user_msg = (
-                        f"🆕 Новая задача: *{item['title']}*\n"
-                        f"Board: {item['board_title']}\n"
-                        f"Column: {item['stack_title']}\n"
-                        f"Due: {item['duedate'] or '—'}\n"
-                        f"{item['description'] or '—'}"
-                    )
-                    kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
-                    send_message_limited(
-                        tg_id,
-                        user_msg,
-                        reply_markup=kb,
-                    )
-                send_log(
-                    f"🆕 *Новая задача* c ID {cid_link}: {item['title']}\n"
-                    f"Board: {item['board_title']}\n"
-                    f"Column: {item['stack_title']}\n"
-                    f"Due: {item['duedate'] or '—'}",
-                    board_id=item['board_id']
-                )
-            else:
-                if changes:
-                    for tg_id in tg_ids:
+                    old_stats = stats_map.get(card_id, {"comments_count": 0, "attachments_count": 0})
+                    old_stats = stats_map.get(card_id, {"comments_count": 0, "attachments_count": 0})
+                    new_comments = int(item.get('comments_count', 0))
+                    new_attachments = int(item.get('attachments_count', 0))
+
+                    inc_comments = new_comments - int(old_stats.get('comments_count', 0))
+                    inc_attachments = new_attachments - int(old_stats.get('attachments_count', 0))
+
+
+                    if inc_comments > 0:
+                        send_log(
+                            "💬 Новые комментарии:" + "\n"
+                            f"{inc_comments} в «{item['title']}» (ID: {cid_link})",
+                            board_id=item['board_id']
+                        )
+                    elif inc_comments < 0:
+                        send_log(
+                            "🗑 Удалены комментарии: "+"\n"
+                            f"{-inc_comments} в «{item['title']}» (ID: {cid_link})",
+                            board_id=item['board_id'])
+
+                    if inc_attachments > 0:
+                        send_log(
+                            "📎 Новые вложения:" + "\n"
+                            f"{inc_attachments} в «{item['title']}» (ID: {cid_link})",
+                            board_id=item['board_id']
+                        )
+                    elif inc_attachments < 0:
+                        send_log(
+                            "🗑 Удалены вложения: "+"\n"
+                            f" {-inc_attachments} в «{item['title']}» (ID: {cid_link})",
+                            board_id=item['board_id'])
+
+                    if (inc_comments != 0) or (inc_attachments != 0) or (card_id not in stats_map):
+                        upsert_task_stats(card_id, new_comments, new_attachments)
+
+                assigned_logins_db = get_task_assignees(card_id)
+                assigned_logins_api = set(item.get('assigned_logins', []))
+                new_assignees = assigned_logins_api - assigned_logins_db
+                for login in new_assignees:
+                    save_task_assignee(card_id, login)
+                tg_ids = [login_map[login] for login in assigned_logins_api if login in login_map]
+                for login in new_assignees:
+                    tg_id = login_map.get(login)
+                    if tg_id:
                         kb = InlineKeyboardMarkup()
+                        prev_stack_id = item['prev_stack_id']
+                        next_stack_id = item['next_stack_id']
+                        if prev_stack_id is not None:
+                            kb.add(InlineKeyboardButton(
+                                text=f"⬅ {item['prev_stack_title']}",
+                                callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{prev_stack_id}"
+                            ))
+                        if next_stack_id is not None:
+                            kb.add(InlineKeyboardButton(
+                                text=f"➡ {item['next_stack_title']}",
+                                callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{next_stack_id}"
+                            ))
+                        user_msg = (
+                            f"🆕 Новая задача: *{item['title']}*\n"
+                            f"Board: {item['board_title']}\n"
+                            f"Column: {item['stack_title']}\n"
+                            f"Due: {item['duedate'] or '—'}\n"
+                            f"{item['description'] or '-'}"
+                        )
                         kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                         send_message_limited(
                             tg_id,
-                            f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
+                            user_msg,
                             reply_markup=kb,
-
+                        )
+                if not saved:
+                    for tg_id in tg_ids:
+                        kb = InlineKeyboardMarkup()
+                        prev_stack_id = item['prev_stack_id']
+                        next_stack_id = item['next_stack_id']
+                        if prev_stack_id is not None:
+                            kb.add(InlineKeyboardButton(
+                                text=f"⬅ {item['prev_stack_title']}",
+                                callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{prev_stack_id}"
+                            ))
+                        if next_stack_id is not None:
+                            kb.add(InlineKeyboardButton(
+                                text=f"➡ {item['next_stack_title']}",
+                                callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{next_stack_id}"
+                            ))
+                        user_msg = (
+                            f"🆕 Новая задача: *{item['title']}*\n"
+                            f"Board: {item['board_title']}\n"
+                            f"Column: {item['stack_title']}\n"
+                            f"Due: {item['duedate'] or '—'}\n"
+                            f"{item['description'] or '—'}"
+                        )
+                        kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
+                        send_message_limited(
+                            tg_id,
+                            user_msg,
+                            reply_markup=kb,
                         )
                     send_log(
-                        f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
+                        f"🆕 *Новая задача* c ID {cid_link}: {item['title']}\n"
+                        f"Board: {item['board_title']}\n"
+                        f"Column: {item['stack_title']}\n"
+                        f"Due: {item['duedate'] or '—'}",
                         board_id=item['board_id']
                     )
+                else:
+                    if changes:
+                        for tg_id in tg_ids:
+                            kb = InlineKeyboardMarkup()
+                            kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
+                            send_message_limited(
+                                tg_id,
+                                f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
+                                reply_markup=kb,
 
-        logger.info("CLOUD: " + ("изменения найдены." if changes_flag else "изменений не обнаружено."))
+                            )
+                        send_log(
+                            f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
+                            board_id=item['board_id']
+                        )
+
+            logger.info("CLOUD: " + ("изменения найдены." if changes_flag else "изменений не обнаружено."))
+        except Exception as e:
+            logger.warning("CLOUD: ошибка сети")
         time.sleep(POLL_INTERVAL)

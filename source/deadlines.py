@@ -123,6 +123,7 @@ def poll_deadlines():
 
             STAGE_ORDER = ["pre_7d", "pre_24h", "pre_2h", "due", "post_2h", "post_24h", "post_repeat"]
             RANK = {s: i for i, s in enumerate(STAGE_ORDER)}
+            DUE_RANK = RANK["due"]
 
             for item in cards:
                 due = item.get("duedate")
@@ -137,10 +138,19 @@ def poll_deadlines():
                     continue
 
                 sched = _schedule_points(due)
+                due_in_future = now_utc < due
 
                 for login in assigned:
                     already = sent_map.get((item["card_id"], login), set())
                     last_rank = max((RANK.get(s, -1) for s in already), default=-1)
+
+                    if due_in_future and last_rank >= DUE_RANK:
+                        try:
+                            reset_sent_for_card(item["card_id"])
+                        except Exception:
+                            pass
+                        already = set()
+                        last_rank = -1
 
                     candidates = [
                         s for s, ts in sched.items()
