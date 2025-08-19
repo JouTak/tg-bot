@@ -65,4 +65,8 @@ jobs:
   
             cd /srv/bots/tg-itmocraft
             podman-compose up -d --build --force-recreate
+            for i in {1..15}; do
+              podman-compose ps | grep -q "tg-itmocraft.*Up" && break
+              sleep 1
+            done
             podman-compose logs --tail=50 tg-itmocraft || true
