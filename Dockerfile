@@ -20,7 +20,6 @@ RUN python -m pip install --upgrade pip \
   && pip install --no-cache-dir -r /app/source/requirements.txt
 
 COPY source /app/source
-COPY setup.py /app/setup.py
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
