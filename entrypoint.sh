@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REQ="/app/source/requirements.txt"
-MAIN="/app/sourc/__main__.py"
+MAIN="/app/source/__main__.py"
 
 if [ "${SKIP_PIP_INSTALL:-0}" != "1" ]; then
   if [ -f "$REQ" ]; then
