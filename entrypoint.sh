@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REQ="/app/source/requirements.txt"
-MAIN="source.__main__"
+MAIN="/app/sourc/__main__.py"
 
 if [ "${SKIP_PIP_INSTALL:-0}" != "1" ]; then
   if [ -f "$REQ" ]; then
@@ -13,7 +13,7 @@ if [ "${SKIP_PIP_INSTALL:-0}" != "1" ]; then
 fi
 
 if [ -f "$MAIN" ]; then
-  exec python -m "$MAIN"
+  exec python "$MAIN"
 else
   echo "No main.py found"
   exec /bin/bash
