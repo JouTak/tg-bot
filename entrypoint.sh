@@ -10,5 +10,5 @@ if [ "${SKIP_PIP_INSTALL:-0}" != "1" ]; then
     python -m pip install --no-cache-dir -r "$REQ"
   fi
 fi
-cd /app/source
-exec python -m __main__
+cd /app
+exec python -m source.__main__
