@@ -11,4 +11,4 @@ if [ "${SKIP_PIP_INSTALL:-0}" != "1" ]; then
   fi
 fi
 cd /app/source
-exec python -u __main__.py
+exec python -m __main__
