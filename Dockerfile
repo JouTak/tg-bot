@@ -15,15 +15,15 @@ RUN useradd --create-home --shell /bin/bash bot \
 WORKDIR /app
 
 COPY source/requirements.txt /app/source/requirements.txt
-
 RUN python -m pip install --upgrade pip \
   && pip install --no-cache-dir -r /app/source/requirements.txt
 
 COPY source /app/source
-RUN chmod +x /app/entrypoint.sh
 COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 USER bot
+
 WORKDIR /app/source
 
 ENTRYPOINT ["/app/entrypoint.sh"]
