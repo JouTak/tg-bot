@@ -18,6 +18,79 @@ from source.links import card_url
 #     link =  f'<a href="{card_url(board_id, card_id)}">{message}</a>'
 #     return link
 
+def change_description(old_description, new_description):
+    result_txt = ''
+    add_text = ''
+    remove_text = ''
+    change_text = ''
+    old_desc = set(old_description.split())
+    new_desc = set(new_description.split())
+    remove_desc = old_desc - new_desc
+    add_desc = new_desc - old_desc
+    if ('[ ]' in new_description) or ('[x]' in new_description):
+        old_desc = old_description.split('\n') # `text` - code
+        new_desc = new_description.split('\n')
+        def find_changes(desc, desription, sign):
+            result = ''
+            for point in range(len(desc)):
+                if desc[point][5:] not in desription:
+                    if desc[point][2:] == '- ':
+                        result += f'{sign} ' + desc[point][2:] + '\n'
+                    else:
+                        result += f'{sign} ' + desc[point] + '\n'
+                    desc[point] = ''
+            if result != '':
+                if result[-1] == '\n': result = result[:-1]
+            return result
+
+        remove_text = find_changes(old_desc, new_description, '-')
+        add_text = find_changes(new_desc, old_description, '+')
+        point = 0
+        while point != max(len(old_desc), len(new_desc)):
+            try:
+                if old_desc[point][3] != new_desc[point][3]:
+                    change_text += '& ' + new_desc[point][2:] + '\n'
+                point += 1
+            except IndexError:
+                break
+        if change_text != '':
+            if change_text[-1] == '\n': change_text = change_text[:-1]
+    else:
+        def find_sentences(description, set_desc, sign, another_description):
+            desc = description.split()
+            another = another_description.split()
+            result = ''
+            is_sentence = False
+            for point in range(len(desc)):
+                try:
+                    how_much = another.count(another[another.index(desc[point])])
+                except ValueError:
+                    how_much = 0
+                if (desc.count(desc[point]) - how_much >= 1) and (desc[point] not in set_desc and not (is_sentence)):
+                    result += f'{sign} {desc[point]} \n'
+                    desc[point] = ''
+                elif desc[point] in set_desc and not (is_sentence):
+                    result += f'{sign} {desc[point]} '
+                    is_sentence = True
+                elif desc[point] in set_desc and is_sentence:
+                    result += f'{desc[point]} '
+                elif desc[point] not in set_desc and is_sentence:
+                    result += '\n'
+                    is_sentence = False
+            if result != '':
+                if result[-1] == '\n': result = result[:-1]
+            return result
+        remove_text = find_sentences(old_description, remove_desc, '-', new_description)
+        add_text = find_sentences(new_description, add_desc, '+', old_description)
+
+    if len(add_text) > 0:
+        result_txt += f"\\\\\\{add_text}///\n"
+    if len(remove_text) > 0:
+        result_txt += f"\\\\\\{remove_text}///\n"
+    if len(change_text) > 0:
+        result_txt += f"\\\\\\{change_text}///\n"
+    return result_txt
+
 def poll_new_tasks():
     logger.info(f"CLOUD: Запускается фоновый опрос задач, частота: {POLL_INTERVAL} секунд!")
     MSK = timezone(timedelta(hours=3))
@@ -59,7 +132,8 @@ def poll_new_tasks():
                     if saved['title'] != item['title']:
                         changes.append(f"Заголовок: `{saved['title']}` → `{item['title']}`")
                     if saved['description'] != item['description']:
-                        changes.append(f"Описание изменилось")
+                        text = change_description(saved['description'], item['description'])
+                        changes.append(f"Описание изменилось: \n{text}")
                     if changes:
                         changes_flag = True
                         update_task_in_db(
@@ -68,14 +142,13 @@ def poll_new_tasks():
                             item['stack_id'], item['stack_title'], item['duedate']
                         )
 
-                    old_stats = stats_map.get(card_id, {"comments_count": 0, "attachments_count": 0})
+                    #old_stats = stats_map.get(card_id, {"comments_count": 0, "attachments_count": 0})
                     old_stats = stats_map.get(card_id, {"comments_count": 0, "attachments_count": 0})
                     new_comments = int(item.get('comments_count', 0))
                     new_attachments = int(item.get('attachments_count', 0))
 
                     inc_comments = new_comments - int(old_stats.get('comments_count', 0))
                     inc_attachments = new_attachments - int(old_stats.get('attachments_count', 0))
-
 
                     if inc_comments > 0:
                         send_log(
