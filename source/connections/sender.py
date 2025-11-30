@@ -34,10 +34,14 @@ _per_chat = defaultdict(lambda: TokenBucket(max_calls=1, period=1.0))  # ~1/s в
 _bold_pat = re.compile(r'\*(.+?)\*')       # *bold* -> <b>…</b>
 _code_pat = re.compile(r'`(.+?)`')         # `code` -> <code>…</code>
 _a_tag_pat = re.compile(r'<a\s+href="https?://[^"]+">.*?</a>', re.IGNORECASE | re.DOTALL)
+_quote_pat = re.compile(r'\\\\\\(.+?)///', re.IGNORECASE | re.DOTALL)
+_pre_pat = re.compile(r'```(.+?)```', re.IGNORECASE | re.DOTALL)
 def _auto_html(text: str | None) -> str:
     """
        *жирный*  -> <b>жирный</b>
        `код`     -> <code>код</code>
+       \\\цитата/// -> <blockquote>цитата</blockquote>
+       большой код -> <pre>большой код</pre>
     """
     if not text:
         return ""
@@ -49,7 +53,8 @@ def _auto_html(text: str | None) -> str:
     stashed = _a_tag_pat.sub(_stash, raw)
 
     s = html.escape(stashed, quote=False)
-
+    s = _quote_pat.sub(lambda m: f"<blockquote>{m.group(1)}</blockquote>", s)
+    s = _pre_pat.sub(lambda m: f"<pre>{m.group(1)}</pre>", s)
     s = _bold_pat.sub(lambda m: f"<b>{m.group(1)}</b>", s)
     s = _code_pat.sub(lambda m: f"<code>{m.group(1)}</code>", s)
 
@@ -64,7 +69,6 @@ def send_message_limited(chat_id: int, text: str, **kwargs):
     safe_text = _auto_html(text)
     kwargs.pop("parse_mode", None)
     kwargs["parse_mode"] = "HTML"
-
     try:
         return bot.send_message(chat_id, safe_text, **kwargs)
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
