@@ -100,10 +100,12 @@ def set_board_topic_handler(message):
     save_board_topic(board_id, thread_id)
     send_message_limited(chat_id, f"Этот топик (ID {thread_id}) привязан к доске {board_title} (ID: {board_id})", message_thread_id=message.message_thread_id)
 
-@bot.message_handler(func=lambda msg: bool(getattr(msg, "text", "")) and not msg.text.startswith('/') and get_login_by_tg_id(msg.chat.id) is None)
+@bot.message_handler(func=lambda msg: bool(getattr(msg, "text", "")) and not msg.text.startswith('/'))
 def save_login(message):
-    logger.info(f"Свободный текст в ЛС (сохранение логина) от user_id={message.from_user.id}")
     if message.chat.type != "private":
+        return
+    logger.info(f"Свободный текст в ЛС (сохранение логина) от user_id={message.from_user.id} ({message.from_user.username}):\n{message.text}")
+    if get_login_by_tg_id(message.chat.id) is not None:
         return
     chat_id = message.chat.id
     nc_login = message.text.strip()

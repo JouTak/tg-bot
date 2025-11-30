@@ -6,11 +6,12 @@ from zoneinfo import ZoneInfo
 from source.app_logging import logger
 from source.connections.nextcloud_api import fetch_all_tasks
 from source.db.repos.users import get_user_map
-from source.db.repos.deadlines import get_sent_map_for_period, mark_sent
+from source.db.repos.tasks import get_saved_tasks
+from source.db.repos.deadlines import get_sent_map_for_period, mark_sent, reset_sent_for_card
 from source.connections.sender import send_message_limited
 from source.links import card_url
 
-from source.config import DEADLINES_INTERVAL, TIMEZONE, QUIET_HOURS
+from source.config import DEADLINES_INTERVAL, TIMEZONE, QUIET_HOURS, DEADLINE_REPEAT_DAYS
 
 DEADLINES_INTERVAL = int(DEADLINES_INTERVAL)
 
@@ -34,14 +35,21 @@ def _at_team_10(utc_dt: datetime) -> datetime:
     return local10.astimezone(timezone.utc)
 
 def _schedule_points(due_utc: datetime) -> dict[str, datetime]:
-    return {
-        "pre_7d":   _at_team_10(due_utc - timedelta(days=7)),
-        "pre_24h":  _at_team_10(due_utc - timedelta(days=1)),
-        "pre_2h":   due_utc - timedelta(hours=2),
-        "due":      due_utc,
-        "post_2h":  due_utc + timedelta(hours=2),
+    sched = {
+        "pre_7d": _at_team_10(due_utc - timedelta(days=7)),
+        "pre_24h": _at_team_10(due_utc - timedelta(days=1)),
+        "pre_2h": due_utc - timedelta(hours=2),
+        "due": due_utc,
+        "post_2h": due_utc + timedelta(hours=2),
         "post_24h": _at_team_10(due_utc + timedelta(days=1)),
     }
+    now = datetime.utcnow().replace(tzinfo=timezone.utc)
+    if now > due_utc + timedelta(days=1):
+        days_over = (now - due_utc).days
+        if days_over >= 1:
+            repeat_day = days_over - (days_over % DEADLINE_REPEAT_DAYS)
+            sched["post_repeat"] = _at_team_10(due_utc + timedelta(days=repeat_day))
+    return sched
 
 def _in_quiet_hours(now_local: datetime) -> bool:
     h = now_local.hour
@@ -67,13 +75,21 @@ def _line_for_stage(stage: str, item: dict, now_utc: datetime) -> str:
     due_s = _fmt_due_local(due)
     prefix = {
         "pre_7d":   "📅 Через неделю",
-        "pre_24h":  "⏰ Завтра",
+        "pre_24h":  "🌝 Завтра",
         "pre_2h":   "⏳ Через ~2 часа",
         "due":      "🔔 Срок наступил",
         "post_2h":  "⚠️ Просрочено на ~2 часа",
-        "post_24h": "🚨 Просрочено на сутки",
+        "post_24h": "🌚 Просрочено на день",
+        "post_repeat": f"🔁 Просрочено уже {(now_utc - due).days} дн.",
     }.get(stage, "⏰ Напоминание")
     return f"— {prefix}: «{title}» — ID: {link} — {due_s} (Δ {rel})"
+
+def _to_utc_naive(dt: datetime | None) -> datetime | None:
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 def poll_deadlines():
     logger.info(f"DEADLINES: старт фонового опроса, частота {DEADLINES_INTERVAL} сек!")
@@ -88,51 +104,82 @@ def poll_deadlines():
 
             login_map = get_user_map()
             cards = fetch_all_tasks()
-
             for c in cards:
                 if c.get("duedate") and c["duedate"].tzinfo is None:
                     c["duedate"] = c["duedate"].replace(tzinfo=timezone.utc)
 
+            saved_map = get_saved_tasks()
+            for it in cards:
+                cid = it["card_id"]
+                prev = saved_map.get(cid)
+                if prev:
+                    old_due = _to_utc_naive(prev.get("duedate"))
+                    new_due = _to_utc_naive(it.get("duedate"))
+                    if old_due != new_due:
+                        reset_sent_for_card(cid)
+
             sent_map = get_sent_map_for_period()
             per_user: dict[str, list[tuple[str, str, int]]] = {}
+
+            STAGE_ORDER = ["pre_7d", "pre_24h", "pre_2h", "due", "post_2h", "post_24h", "post_repeat"]
+            RANK = {s: i for i, s in enumerate(STAGE_ORDER)}
+            DUE_RANK = RANK["due"]
 
             for item in cards:
                 due = item.get("duedate")
                 if not due:
+                    continue
+                if item.get("done") is not None:
+                    continue
+                if item.get("archived"):
                     continue
                 assigned = set(item.get("assigned_logins") or [])
                 if not assigned:
                     continue
 
                 sched = _schedule_points(due)
-                STAGE_ORDER = ["pre_7d", "pre_24h", "pre_2h", "due", "post_2h", "post_24h"]
-                RANK = {s: i for i, s in enumerate(STAGE_ORDER)}
+                due_in_future = now_utc < due
 
                 for login in assigned:
                     already = sent_map.get((item["card_id"], login), set())
-                    candidates = [s for s, ts in _schedule_points(due).items() if s not in already and now_utc >= ts]
+                    last_rank = max((RANK.get(s, -1) for s in already), default=-1)
+
+                    if due_in_future and last_rank >= DUE_RANK:
+                        try:
+                            reset_sent_for_card(item["card_id"])
+                        except Exception:
+                            pass
+                        already = set()
+                        last_rank = -1
+
+                    candidates = [
+                        s for s, ts in sched.items()
+                        if RANK[s] > last_rank and now_utc >= ts
+                    ]
                     if not candidates:
                         continue
+
                     chosen = max(candidates, key=lambda s: RANK[s])
                     per_user.setdefault(login, []).append(
                         (chosen, _line_for_stage(chosen, item, now_utc), item["card_id"])
                     )
 
-            priority = {"due": 0, "post_2h": 1, "post_24h": 2, "pre_2h": 3, "pre_24h": 4, "pre_7d": 5}
+            priority = {"due": 0, "post_2h": 1, "post_24h": 2, "post_repeat": 3, "pre_2h": 4, "pre_24h": 5, "pre_7d": 6}
             for login, entries in per_user.items():
                 tg_id = login_map.get(login)
                 if not tg_id:
                     continue
                 entries.sort(key=lambda x: (priority.get(x[0], 9), x[2]))
                 body = "\n".join(e[1] for e in entries)
-                send_message_limited(tg_id, f"⏰ Напоминания о дедлайнах:\n{body}")
-                for stage, _, card_id in entries:
-                    try:
-                        idx = RANK[stage]
-                        for s in STAGE_ORDER[:idx + 1]:
-                            mark_sent(card_id, login, s)
-                    except Exception as e:
-                        logger.warning(f"DEADLINES: не удалось отметить отправку ({card_id}, {login}, {stage}): {e}")
-        except Exception as e:
-            logger.exception(f"DEADLINES: сбой цикла: {e}")
+                ok = send_message_limited(tg_id, f"⏰ Напоминания о дедлайнах:\n{body}")
+                if ok:
+                    for stage, _, card_id in entries:
+                        try:
+                            mark_sent(card_id, login, stage)
+                        except Exception as e:
+                            logger.warning(f"DEADLINES: не удалось отметить отправку ({card_id}, {login}, {stage}): {e}")
+                else:
+                    logger.warning(f"DEADLINES: уведомления {login} ({tg_id}) не доставлены, пропускаю mark_sent")
+        except Exception:
+            logger.exception(f"DEADLINES: сбой цикла")
         time.sleep(DEADLINES_INTERVAL)

@@ -119,13 +119,16 @@ def fetch_all_tasks():
                     if comments_count is None: comments_count = 0
                     if attachments_count is None: attachments_count = 0
 
+                    done = card.get('done')
+
                     result.append({
                         'card_id': card['id'], 'title': card['title'], 'description': card.get('description', ''),
                         'board_id': board_id, 'board_title': board_title,
                         'stack_id': stack_id, 'stack_title': stack_title,
                         'prev_stack_id': prev_stack_id, 'prev_stack_title': prev_stack_title,
                         'next_stack_id': next_stack_id, 'next_stack_title': next_stack_title,
-                        'duedate': duedate_dt, 'assigned_logins': assigned_logins,
+                        'duedate': duedate_dt, 'done': done,
+                        'assigned_logins': assigned_logins,
                         'comments_count': comments_count, 'attachments_count': attachments_count
                     })
         return result

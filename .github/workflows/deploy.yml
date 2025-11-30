@@ -2,19 +2,27 @@ name: Deploy on Push
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            source/requirements.txt
 
       - name: Install dependencies
         run: |
@@ -30,21 +38,65 @@ jobs:
         run: |
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
 
-  deploy:
+  build-and-push:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: test
     runs-on: ubuntu-latest
-
     steps:
-      - name: Execute SSH Commands
-        uses: GPTED/SSH-My-Action@0.1
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (via PAT)
+        uses: docker/login-action@v3
         with:
-          HOST: ${{ secrets.SSH_HOST }}
-          USER: bot_dev
-          PORT: ${{ secrets.PORT }}
-          PRIVATE_KEY: ${{ secrets.BOT_DEV_SSH_PRIVATE_KEY }}
-          CMD: |
-            cd /srv/bots/tg-itmocraft/app;
-            git reset --hard HEAD;
-            git pull;
-            cd /srv/bots/tg-itmocraft;
-            podman-compose up -d --build --force-recreate;
+          registry: ghcr.io
+          username: 'JouTak'
+          password: ${{ secrets.GHCR_PUSH_TOKEN }} 
+
+      - name: Build and Tag image
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="ghcr.io/${OWNER}/tg-itmocraft"
+          docker build -t $IMAGE:latest -f ./Dockerfile .
+          docker tag $IMAGE:latest $IMAGE:${{ github.run_number }}
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+      - name: Push image
+        run: |
+          docker push $IMAGE:latest
+          docker push $IMAGE:${{ github.run_number }}
+
+  # deploy:
+  #   name: Deploy
+  #   if: github.ref == 'refs/heads/main'
+  #   needs: test
+  #   runs-on: ubuntu-latest
+  #   environment: production
+
+  #   steps:
+  #     - name: Deploy via SSH (prod)
+  #       uses: appleboy/ssh-action@v1.0.3
+  #       with:
+  #         host: ${{ secrets.SSH_HOST }}
+  #         username: bot_dev
+  #         port: ${{ secrets.PORT }}
+  #         key: ${{ secrets.BOT_DEV_SSH_PRIVATE_KEY }}
+  #         script: |
+  #           set -eo pipefail
+  #           echo "[PROD] Deploy started on $(hostname)"
+  
+  #           cd /srv/bots/tg-itmocraft/app
+  #           echo "[PROD] current: "
+  #           git rev-parse --short HEAD
+  #           git fetch --all --quiet
+  #           git reset --hard origin/main --quiet
+  #           echo "[PROD] updated: "
+  #           git rev-parse --short HEAD
+  
+  #           cd /srv/bots/tg-itmocraft
+  #           podman-compose up -d --build --force-recreate
+  #           sleep 15
+  #           podman-compose logs --tail=50 tg-bot || true
