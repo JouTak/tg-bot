@@ -71,6 +71,7 @@ def run():
             logger.debug(f"Webhook(before): url='{_get(info,'url','')}' pending={_get(info,'pending_update_count',0)}")
         except Exception as e:
             logger.debug(f"Webhook info error: {e}")
+
     try:
         bot.remove_webhook(drop_pending_updates=True)
     except TypeError:
@@ -91,7 +92,7 @@ def run():
             backoff = 5.0
         except Exception as e:
             if _is_network_error(e):
-                logger.warning(f"Нет связи с Telegram ({_brief(e)}). Повтор через {_fmt_duration(backoff)}.")
+                logger.error(f"Нет связи с Telegram ({_brief(e)}). Повтор через {_fmt_duration(backoff)}.")
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 120.0)
             else:

@@ -1,6 +1,7 @@
 import time
 import re
 import difflib
+import traceback
 from datetime import timezone, timedelta
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from source.config import POLL_INTERVAL
@@ -249,5 +250,6 @@ def poll_new_tasks():
 
             logger.info("CLOUD: " + ("изменения найдены." if changes_flag else "изменений не обнаружено."))
         except Exception as e:
-            logger.warning("CLOUD: ошибка сети")
+            logger.error(f"CLOUD: ошибка плановой обработки задач — {e}")
+            logger.debug(traceback.format_exc())
         time.sleep(POLL_INTERVAL)
