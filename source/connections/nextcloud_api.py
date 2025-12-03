@@ -67,7 +67,8 @@ def fetch_user_tasks(login):
                         'prev_stack_id': prev_stack_id, 'prev_stack_title': prev_stack_title,
                         'next_stack_id': next_stack_id, 'next_stack_title': next_stack_title,
                         'duedate': duedate_dt, 'assigned_logins': assigned,
-                        'comments_count': comments_count, 'attachments_count': attachments_count
+                        'comments_count': comments_count, 'attachments_count': attachments_count,
+                        'etag': card['Etag']
                     })
     return result
 
@@ -129,6 +130,7 @@ def fetch_all_tasks():
                         'next_stack_id': next_stack_id, 'next_stack_title': next_stack_title,
                         'duedate': duedate_dt, 'done': done,
                         'assigned_logins': assigned_logins,
-                        'comments_count': comments_count, 'attachments_count': attachments_count
+                        'comments_count': comments_count, 'attachments_count': attachments_count,
+                        'etag': card['ETag']
                     })
         return result
