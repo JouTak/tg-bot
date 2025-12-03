@@ -5,7 +5,7 @@ from logging import FileHandler, StreamHandler, Formatter
 from source.config import APP_DEBUG
 
 logger = logging.getLogger("source")
-_APP_DEBUG = APP_DEBUG==1
+_APP_DEBUG = APP_DEBUG=="1"
 
 def is_debug() -> bool:
     return _APP_DEBUG
@@ -14,7 +14,7 @@ def setup_logging():
     if logger.handlers:
         return logger
 
-    level = logging.DEBUG if _APP_DEBUG else logging.INFO
+    level = logging.DEBUG if _APP_DEBUG else logging.INF
     fmt = Formatter('[%(levelname)s] %(asctime)s - %(message)s')
 
     sh = StreamHandler()

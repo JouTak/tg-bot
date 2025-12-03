@@ -1,5 +1,6 @@
 from __future__ import annotations
 import time
+import traceback
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -177,9 +178,11 @@ def poll_deadlines():
                         try:
                             mark_sent(card_id, login, stage)
                         except Exception as e:
-                            logger.warning(f"DEADLINES: не удалось отметить отправку ({card_id}, {login}, {stage}): {e}")
+                            logger.error(f"DEADLINES: не удалось отметить отправку ({card_id}, {login}, {stage}): {e}")
+                            logger.debug(traceback.format_exc())
                 else:
                     logger.warning(f"DEADLINES: уведомления {login} ({tg_id}) не доставлены, пропускаю mark_sent")
         except Exception:
             logger.exception(f"DEADLINES: сбой цикла")
+            logger.debug(traceback.format_exc())
         time.sleep(DEADLINES_INTERVAL)
