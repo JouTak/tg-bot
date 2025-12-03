@@ -14,7 +14,7 @@ def setup_logging():
     if logger.handlers:
         return logger
 
-    level = logging.DEBUG if _APP_DEBUG else logging.INF
+    level = logging.DEBUG if _APP_DEBUG else logging.INFO
     fmt = Formatter('[%(levelname)s] %(asctime)s - %(message)s')
 
     sh = StreamHandler()
