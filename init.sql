@@ -15,11 +15,13 @@ CREATE TABLE IF NOT EXISTS tasks (
   stack_id    INT             NOT NULL,
   stack_title VARCHAR(100)    NOT NULL,
   duedate     DATETIME        NULL,
-  created_at  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  etag        VARCHAR(255)    DEFAULT NULL
 ) ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_unicode_ci;
 
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS etag VARCHAR(255) DEFAULT NULL;
 
 CREATE TABLE IF NOT EXISTS task_assignees (
   card_id INT NOT NULL,

@@ -32,14 +32,14 @@ def save_task_to_db(card_id, title, description, board_id, board_title, stack_id
     cursor.close()
     conn.close()
 
-def save_task_basic(card_id, title, description, board_id, board_title, stack_id, stack_title, duedate):
+def save_task_basic(card_id, title, description, board_id, board_title, stack_id, stack_title, duedate, etag):
     conn = get_mysql_connection()
     cursor = conn.cursor()
     cursor.execute(
         """
         INSERT INTO tasks
-          (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+          (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate, etag)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE
           title=VALUES(title),
           description=VALUES(description),
@@ -47,9 +47,10 @@ def save_task_basic(card_id, title, description, board_id, board_title, stack_id
           board_title=VALUES(board_title),
           stack_id=VALUES(stack_id),
           stack_title=VALUES(stack_title),
-          duedate=VALUES(duedate)
+          duedate=VALUES(duedate),
+          etag=VALUES(etag)
         """,
-        (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate)
+        (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate, etag)
     )
     conn.commit()
     cursor.close()
@@ -88,7 +89,7 @@ def get_saved_tasks():
     conn.close()
     return {t['card_id']: t for t in tasks}
 
-def update_task_in_db(card_id, title, description, board_id, board_title, stack_id, stack_title, duedate):
+def update_task_in_db(card_id, title, description, board_id, board_title, stack_id, stack_title, duedate, etag):
     conn = get_mysql_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -97,10 +98,10 @@ def update_task_in_db(card_id, title, description, board_id, board_title, stack_
             title=%s, description=%s,
             board_id=%s, board_title=%s,
             stack_id=%s, stack_title=%s,
-            duedate=%s
+            duedate=%s, etag=%s
         WHERE card_id=%s
         """,
-        (title, description, board_id, board_title, stack_id, stack_title, duedate, card_id)
+        (title, description, board_id, board_title, stack_id, stack_title, duedate, etag, card_id)
     )
     conn.commit()
     cursor.close()

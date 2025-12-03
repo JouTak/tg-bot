@@ -33,6 +33,8 @@ _per_chat = defaultdict(lambda: TokenBucket(max_calls=1, period=1.0))  # ~1/s в
 
 _bold_pat = re.compile(r'\*(.+?)\*')       # *bold* -> <b>…</b>
 _code_pat = re.compile(r'`(.+?)`')         # `code` -> <code>…</code>
+_strike_pat = re.compile(r'~(.+?)~')
+_italic_pat = re.compile(r'/(.+?)\\')
 _a_tag_pat = re.compile(r'<a\s+href="https?://[^"]+">.*?</a>', re.IGNORECASE | re.DOTALL)
 _quote_pat = re.compile(r'\\\\\\(.+?)///', re.IGNORECASE | re.DOTALL)
 _pre_pat = re.compile(r'```(.+?)```', re.IGNORECASE | re.DOTALL)
@@ -41,7 +43,10 @@ def _auto_html(text: str | None) -> str:
        *жирный*  -> <b>жирный</b>
        `код`     -> <code>код</code>
        \\\цитата/// -> <blockquote>цитата</blockquote>
-       большой код -> <pre>большой код</pre>
+       ```большой код``` -> <pre>большой код</pre>
+        ~зачеркнутый~ -> <s>зачеркнутый</s>
+        /курсив\ -> <i>курсив</i>
+       if need more markdown style edit text check api https://core.telegram.org/bots/api#markdown-style
     """
     if not text:
         return ""
@@ -57,7 +62,8 @@ def _auto_html(text: str | None) -> str:
     s = _pre_pat.sub(lambda m: f"<pre>{m.group(1)}</pre>", s)
     s = _bold_pat.sub(lambda m: f"<b>{m.group(1)}</b>", s)
     s = _code_pat.sub(lambda m: f"<code>{m.group(1)}</code>", s)
-
+    s = _strike_pat.sub(lambda m: f"<s>{m.group(1)}</s>", s)
+    s = _italic_pat.sub(lambda m: f"<i>{m.group(1)}</i>", s)
     for i, tag in enumerate(anchors):
         s = s.replace(f"__ANCHOR_{i}__", tag)
     return s
