@@ -43,7 +43,8 @@ def show_user_cards(message):
             t['board_title'],
             t['stack_id'],
             t['stack_title'],
-            t['duedate']
+            t['duedate'],
+            t['etag']
         )
         kb = InlineKeyboardMarkup()
         if t['prev_stack_id'] is not None:

@@ -44,7 +44,7 @@ def change_description(old_description, new_description):
         while point != max(len(old_desc), len(new_desc)):
             try:
                 if old_desc[point][3] != new_desc[point][3]:
-                    change_text += '\\\\\\/& ' + new_desc[point][2:] + '\\///\n'
+                    change_text += '\\\\\\_& ' + new_desc[point][2:] + '_///\n'
                 point += 1
             except IndexError:
                 break
@@ -61,8 +61,10 @@ def change_description(old_description, new_description):
                 add_text += "\\\\\\*" + d[2:].lstrip() + '*///\n'
             elif d.startswith("- "):
                 remove_text += "\\\\\\~" + d[2:].lstrip() + '~///\n'
-        if add_text[-1] == '\n': add_text = add_text[:-1]
-        if remove_text[-1] == '\n': remove_text = remove_text[:-1]
+        if len(add_text) > 0:
+            if add_text[-1] == '\n': add_text = add_text[:-1]
+        if len(remove_text) > 0:
+            if remove_text[-1] == '\n': remove_text = remove_text[:-1]
     if len(add_text) > 0:
         result_txt += f"{add_text}\n"
     if len(remove_text) > 0:
