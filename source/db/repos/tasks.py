@@ -9,14 +9,14 @@ def get_tasks_from_db(tg_id):
     conn.close()
     return set(r[0] for r in rows)
 
-def save_task_to_db(card_id, title, description, board_id, board_title, stack_id, stack_title, duedate):
+def save_task_to_db(card_id, title, description, board_id, board_title, stack_id, stack_title, duedate, etag):
     conn = get_mysql_connection()
     cursor = conn.cursor()
     cursor.execute(
         """
         INSERT INTO tasks
-          (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+          (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate, etag)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE
           title=VALUES(title),
           description=VALUES(description),
@@ -24,9 +24,10 @@ def save_task_to_db(card_id, title, description, board_id, board_title, stack_id
           board_title=VALUES(board_title),
           stack_id=VALUES(stack_id),
           stack_title=VALUES(stack_title),
-          duedate=VALUES(duedate)
+          duedate=VALUES(duedate),
+          etag=VALUES(etag)
         """,
-        (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate)
+        (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate, etag)
     )
     conn.commit()
     cursor.close()
