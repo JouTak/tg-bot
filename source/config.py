@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+COMMIT_HASH = os.getenv("GIT_COMMIT", "unknown")
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 BASE_URL = os.getenv("BASE_URL")
 
