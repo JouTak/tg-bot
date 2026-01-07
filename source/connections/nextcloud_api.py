@@ -1,13 +1,16 @@
 import time
-from datetime import datetime, timezone
-from typing import Tuple
+import re
+from datetime import datetime, timezone, timedelta
+from typing import Tuple, Optional, Any
 
 import requests
 import socket, http.client
 from requests.exceptions import RequestException, ConnectionError, Timeout
 from requests.auth import HTTPBasicAuth
+
 from source.app_logging import logger
 from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, POLL_INTERVAL
+
 
 def _extract_counts(card: dict) -> Tuple[int, int]:
     comments = card.get("commentsCount")
@@ -16,19 +19,80 @@ def _extract_counts(card: dict) -> Tuple[int, int]:
     atts = card.get("attachmentCount")
     if atts is None:
         atts = card.get("attachmentsCount", 0)
-    # if isinstance(card.get("attachments"), list):
-    #     atts = max(atts, len(card["attachments"]))
     return int(comments or 0), int(atts or 0)
 
 
+def _parse_due_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional[datetime]:
+    if value is None or value == "":
+        return None
+
+    if isinstance(value, datetime):
+        dt = value
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+
+        if re.fullmatch(r"\d+(\.\d+)?", s):
+            try:
+                return _parse_due_utc_naive(float(s), card_id=card_id)
+            except Exception:
+                logger.debug(f"CLOUD: card {card_id} duedate numeric-str='{value}' -> parse failed")
+                return None
+
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+
+        m = re.search(r"([+-]\d{2})(\d{2})$", s)
+        if m:
+            s = s[:m.start()] + f"{m.group(1)}:{m.group(2)}"
+
+        try:
+            dt = datetime.fromisoformat(s)
+        except Exception as e:
+            logger.debug(f"CLOUD: card {card_id} duedate_raw='{value}' -> fromisoformat failed: {e}")
+            return None
+
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+    if isinstance(value, (int, float)):
+        ts = float(value)
+        if ts <= 0:
+            return None
+
+        if ts > 1_000_000_000_000:
+            ts = ts / 1000.0
+
+        dt_epoch = datetime.fromtimestamp(ts, tz=timezone.utc)
+
+        if dt_epoch.year <= 1971 and ts < 60_000_000:
+            year = datetime.now(timezone.utc).year
+            dt_year = datetime(year, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=ts)
+            logger.debug(
+                f"CLOUD: card {card_id} duedate_raw={value} -> seconds-from-year-start ({year}) -> {dt_year.isoformat()}"
+            )
+            return dt_year.replace(tzinfo=None)
+
+        return dt_epoch.replace(tzinfo=None)
+
+    return None
+
+
 def get_board_title(board_id):
-    logger.debug("CLOUD: получаю список досок для поиска title")
-    resp = requests.get(f"{BASE_URL}/boards", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
-    resp.raise_for_status()
-    for board in resp.json():
+    boards_resp = requests.get(f"{BASE_URL}/boards", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
+    boards_resp.raise_for_status()
+    boards = boards_resp.json()
+    for board in boards:
         if board.get('id') == board_id:
             return board.get('title')
     return None
+
 
 def fetch_user_tasks(login):
     logger.debug("CLOUD: получаю задачи пользователя")
@@ -36,41 +100,65 @@ def fetch_user_tasks(login):
     boards_resp = requests.get(f"{BASE_URL}/boards", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
     boards_resp.raise_for_status()
     boards = boards_resp.json()
+
     for board in boards:
-        if board.get('archived', True):
+        if board.get('archived', False):
             continue
-        board_id = board['id']; board_title = board['title']
-        stacks_resp = requests.get(f"{BASE_URL}/boards/{board_id}/stacks?details=true", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
+
+        board_id = board['id']
+        board_title = board['title']
+
+        stacks_resp = requests.get(
+            f"{BASE_URL}/boards/{board_id}/stacks?details=true",
+            headers=HEADERS,
+            auth=HTTPBasicAuth(USERNAME, PASSWORD)
+        )
         stacks_resp.raise_for_status()
         stacks = sorted(stacks_resp.json(), key=lambda s: s['order'])
+
         for idx, stack in enumerate(stacks):
-            stack_id = stack['id']; stack_title = stack['title']
+            stack_id = stack['id']
+            stack_title = stack['title']
+
             cards = stack.get('cards') or []
             if not cards:
-                sd = requests.get(f"{BASE_URL}/boards/{board_id}/stacks/{stack_id}?details=true", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
-                sd.raise_for_status(); cards = sd.json().get('cards', [])
+                sd = requests.get(
+                    f"{BASE_URL}/boards/{board_id}/stacks/{stack_id}?details=true",
+                    headers=HEADERS,
+                    auth=HTTPBasicAuth(USERNAME, PASSWORD)
+                )
+                sd.raise_for_status()
+                cards = sd.json().get('cards', [])
+
             for card in cards:
                 assigned = [u['participant']['uid'] for u in (card.get('assignedUsers') or [])]
-                if login in assigned:
-                    prev_stack_id = stacks[idx - 1]['id'] if idx > 0 else None
-                    prev_stack_title = stacks[idx - 1]['title'] if idx > 0 else None
-                    next_stack_id = stacks[idx + 1]['id'] if idx < len(stacks) - 1 else None
-                    next_stack_title = stacks[idx + 1]['title'] if idx < len(stacks) - 1 else None
-                    duedate_iso = card.get('duedate'); duedate_dt = None
-                    if duedate_iso:
-                        duedate_dt = datetime.fromisoformat(duedate_iso).astimezone(timezone.utc).replace(tzinfo=None)
-                    comments_count, attachments_count = _extract_counts(card)
-                    result.append({
-                        'card_id': card['id'], 'title': card['title'], 'description': card.get('description', ''),
-                        'board_id': board_id, 'board_title': board_title,
-                        'stack_id': stack_id, 'stack_title': stack_title,
-                        'prev_stack_id': prev_stack_id, 'prev_stack_title': prev_stack_title,
-                        'next_stack_id': next_stack_id, 'next_stack_title': next_stack_title,
-                        'duedate': duedate_dt, 'assigned_logins': assigned,
-                        'comments_count': comments_count, 'attachments_count': attachments_count,
-                        'etag': card['Etag']
-                    })
+                if login not in assigned:
+                    continue
+
+                prev_stack_id = stacks[idx - 1]['id'] if idx > 0 else None
+                prev_stack_title = stacks[idx - 1]['title'] if idx > 0 else None
+                next_stack_id = stacks[idx + 1]['id'] if idx < len(stacks) - 1 else None
+                next_stack_title = stacks[idx + 1]['title'] if idx < len(stacks) - 1 else None
+
+                duedate_raw = card.get('duedate') or card.get('dueDate')
+                duedate_dt = _parse_due_utc_naive(duedate_raw, card_id=card.get('id'))
+
+                comments_count, attachments_count = _extract_counts(card)
+                etag = card.get('ETag') or card.get('Etag') or card.get('etag')
+
+                result.append({
+                    'card_id': card['id'], 'title': card['title'], 'description': card.get('description', ''),
+                    'board_id': board_id, 'board_title': board_title,
+                    'stack_id': stack_id, 'stack_title': stack_title,
+                    'prev_stack_id': prev_stack_id, 'prev_stack_title': prev_stack_title,
+                    'next_stack_id': next_stack_id, 'next_stack_title': next_stack_title,
+                    'duedate': duedate_dt, 'assigned_logins': assigned,
+                    'comments_count': comments_count, 'attachments_count': attachments_count,
+                    'etag': etag
+                })
+
     return result
+
 
 def fetch_all_tasks():
     while True:
@@ -85,42 +173,50 @@ def fetch_all_tasks():
             logger.warning(f"CLOUD: соединение сброшено/недоступно: {e}. Повтор через {POLL_INTERVAL} секунд.")
             time.sleep(POLL_INTERVAL)
             continue
+
         for board in boards:
-            if board.get('archived', True):
+            if board.get('archived', False):
                 continue
-            board_id = board['id']; board_title = board['title']
-            stacks_resp = requests.get(f"{BASE_URL}/boards/{board_id}/stacks?details=true", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
+
+            board_id = board['id']
+            board_title = board['title']
+
+            stacks_resp = requests.get(
+                f"{BASE_URL}/boards/{board_id}/stacks?details=true",
+                headers=HEADERS,
+                auth=HTTPBasicAuth(USERNAME, PASSWORD)
+            )
             stacks_resp.raise_for_status()
             stacks = sorted(stacks_resp.json(), key=lambda s: s['order'])
+
             for idx, stack in enumerate(stacks):
-                stack_id = stack['id']; stack_title = stack['title']
+                stack_id = stack['id']
+                stack_title = stack['title']
+
                 cards = stack.get('cards') or []
                 if not cards:
-                    sd = requests.get(f"{BASE_URL}/boards/{board_id}/stacks/{stack_id}?details=true", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
-                    sd.raise_for_status(); cards = sd.json().get('cards', [])
+                    sd = requests.get(
+                        f"{BASE_URL}/boards/{board_id}/stacks/{stack_id}?details=true",
+                        headers=HEADERS,
+                        auth=HTTPBasicAuth(USERNAME, PASSWORD)
+                    )
+                    sd.raise_for_status()
+                    cards = sd.json().get('cards', [])
+
                 for card in cards:
-                    duedate_iso = card.get('duedate'); duedate_dt = None
-                    if duedate_iso:
-                        duedate_dt = datetime.fromisoformat(duedate_iso).astimezone(timezone.utc).replace(tzinfo=None)
+                    duedate_raw = card.get('duedate') or card.get('dueDate')
+                    duedate_dt = _parse_due_utc_naive(duedate_raw, card_id=card.get('id'))
+
                     assigned_logins = [u['participant']['uid'] for u in (card.get('assignedUsers') or [])]
+
                     prev_stack_id = stacks[idx - 1]['id'] if idx > 0 else None
                     prev_stack_title = stacks[idx - 1]['title'] if idx > 0 else None
                     next_stack_id = stacks[idx + 1]['id'] if idx < len(stacks) - 1 else None
                     next_stack_title = stacks[idx + 1]['title'] if idx < len(stacks) - 1 else None
 
-                    comments_count = None
-                    attachments_count = None
-                    if 'commentsCount' in card or 'attachmentCount' in card:
-                        comments_count = card.get('commentsCount') or 0
-                        attachments_count = card.get('attachmentCount') or 0
-                    else:
-                        if 'commentsCount' in card: comments_count = int(card['commentsCount'])
-                        if 'attachmentCount' in card: attachments_count = int(card['attachmentCount'])
-
-                    if comments_count is None: comments_count = 0
-                    if attachments_count is None: attachments_count = 0
-
+                    comments_count, attachments_count = _extract_counts(card)
                     done = card.get('done')
+                    etag = card.get('ETag') or card.get('Etag') or card.get('etag')
 
                     result.append({
                         'card_id': card['id'], 'title': card['title'], 'description': card.get('description', ''),
@@ -131,6 +227,7 @@ def fetch_all_tasks():
                         'duedate': duedate_dt, 'done': done,
                         'assigned_logins': assigned_logins,
                         'comments_count': comments_count, 'attachments_count': attachments_count,
-                        'etag': card['ETag']
+                        'etag': etag
                     })
+
         return result
