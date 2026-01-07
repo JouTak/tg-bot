@@ -1,5 +1,8 @@
 from __future__ import annotations
-from typing import Dict, Set, Tuple
+
+from datetime import datetime
+from typing import Dict, Set, Tuple, Optional
+
 from source.db.db import get_mysql_connection
 
 
@@ -20,13 +23,12 @@ def ensure_tables():
     conn.close()
 
 
-def get_sent_map_for_period() -> Dict[Tuple[int, str], Set[str]]:
+def get_last_sent_map() -> Dict[Tuple[int, str], Tuple[str, datetime]]:
     ensure_tables()
     conn = get_mysql_connection()
     cur = conn.cursor()
-    # Берём ТОЛЬКО последнюю запись по каждой паре (card_id, login)
     cur.execute("""
-        SELECT t.card_id, t.login, t.stage
+        SELECT t.card_id, t.login, t.stage, t.sent_at
         FROM deadline_reminders AS t
         JOIN (
             SELECT card_id, login, MAX(sent_at) AS last_ts
@@ -38,11 +40,20 @@ def get_sent_map_for_period() -> Dict[Tuple[int, str], Set[str]]:
          AND m.last_ts = t.sent_at
     """)
     rows = cur.fetchall()
-    cur.close(); conn.close()
+    cur.close()
+    conn.close()
 
+    out: Dict[Tuple[int, str], Tuple[str, datetime]] = {}
+    for card_id, login, stage, sent_at in rows:
+        out[(int(card_id), str(login))] = (str(stage), sent_at)
+    return out
+
+
+def get_sent_map_for_period() -> Dict[Tuple[int, str], Set[str]]:
+    last = get_last_sent_map()
     out: Dict[Tuple[int, str], Set[str]] = {}
-    for card_id, login, stage in rows:
-        out.setdefault((int(card_id), str(login)), set()).add(str(stage))
+    for key, (stage, _) in last.items():
+        out.setdefault(key, set()).add(stage)
     return out
 
 
@@ -56,7 +67,8 @@ def mark_sent(card_id: int, login: str, stage: str) -> None:
         VALUES (%s, %s, %s)
     """, (card_id, login, stage))
     conn.commit()
-    cur.close(); conn.close()
+    cur.close()
+    conn.close()
 
 
 def reset_sent_for_card(card_id: int) -> None:
@@ -65,4 +77,5 @@ def reset_sent_for_card(card_id: int) -> None:
     cur = conn.cursor()
     cur.execute("DELETE FROM deadline_reminders WHERE card_id = %s", (card_id,))
     conn.commit()
-    cur.close(); conn.close()
+    cur.close()
+    conn.close()

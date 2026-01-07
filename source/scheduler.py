@@ -4,6 +4,7 @@ import difflib
 import traceback
 from datetime import timezone, timedelta
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 from source.config import POLL_INTERVAL
 from source.connections.sender import send_message_limited
 from source.connections.nextcloud_api import fetch_all_tasks
@@ -17,14 +18,11 @@ from source.app_logging import logger
 from source.logging_service import send_log
 from source.links import card_url
 
-# def _create_link(board_id, card_id, message: str):
-#     link =  f'<a href="{card_url(board_id, card_id)}">{message}</a>'
-#     return link
 
 def change_description(old_description, new_description):
     result_txt = ''; add_text = ''; remove_text = ''; change_text = ''
     if ('[ ]' in new_description) or ('[x]' in new_description):
-        old_desc = old_description.split('\n') # `text` - code
+        old_desc = old_description.split('\n')
         new_desc = new_description.split('\n')
         def find_changes(desc, desription, sign, format):
             result = ''
@@ -74,6 +72,7 @@ def change_description(old_description, new_description):
         result_txt += f"{change_text}\n"
     return result_txt
 
+
 def poll_new_tasks():
     logger.info(f"CLOUD: Запускается фоновый опрос задач, частота: {POLL_INTERVAL} секунд!")
     MSK = timezone(timedelta(hours=3))
@@ -85,28 +84,34 @@ def poll_new_tasks():
             all_cards = fetch_all_tasks()
             saved_tasks = get_saved_tasks()
             stats_map = get_task_stats_map()
+
             for item in all_cards:
+                changes = []
                 card_id = item['card_id']; board_id = item['board_id']
                 cid_link = f'<a href="{card_url(item["board_id"], card_id)}">{card_id}</a>'
+
                 new_comments = int(item.get('comments_count', 0))
                 new_attachments = int(item.get('attachments_count', 0))
+
                 saved = saved_tasks.get(card_id)
+
+                etag_new = item.get('etag')
+                etag_old = saved.get('etag') if saved else None
+                etag_same = bool(saved and (etag_new is not None) and (etag_old == etag_new))
+
                 if not saved:
                     changes_flag = True
                     save_task_basic(
                         card_id, item['title'], item['description'],
                         item['board_id'], item['board_title'],
-                        item['stack_id'], item['stack_title'], item['duedate'], item['etag']
+                        item['stack_id'], item['stack_title'], item['duedate'], etag_new
                     )
                     upsert_task_stats(card_id, new_comments, new_attachments)
                     stats_map[card_id] = {
                         "comments_count": new_comments,
                         "attachments_count": new_attachments
                     }
-                elif saved['etag'] == item['etag']:
-                    continue
-                else:
-                    changes = []
+                elif not etag_same:
                     if saved['stack_id'] != item['stack_id']:
                         changes.append(f"Колонка: *{saved['stack_title']}* → *{item['stack_title']}*")
                     UTC = timezone.utc
@@ -119,19 +124,16 @@ def poll_new_tasks():
                     if saved['description'] != item['description']:
                         text = change_description(saved['description'], item['description'])
                         changes.append(f"Описание изменилось: \n{text}")
-                    if changes or saved['etag'] is None:
+
+                    if changes or (etag_old is None) or (etag_new is None):
                         changes_flag = True
                         update_task_in_db(
                             card_id, item['title'], item['description'],
                             item['board_id'], item['board_title'],
-                            item['stack_id'], item['stack_title'], item['duedate'], item['etag']
+                            item['stack_id'], item['stack_title'], item['duedate'], etag_new
                         )
 
-                    #old_stats = stats_map.get(card_id, {"comments_count": 0, "attachments_count": 0})
                     old_stats = stats_map.get(card_id, {"comments_count": 0, "attachments_count": 0})
-                    new_comments = int(item.get('comments_count', 0))
-                    new_attachments = int(item.get('attachments_count', 0))
-
                     inc_comments = new_comments - int(old_stats.get('comments_count', 0))
                     inc_attachments = new_attachments - int(old_stats.get('attachments_count', 0))
 
@@ -161,13 +163,16 @@ def poll_new_tasks():
 
                     if (inc_comments != 0) or (inc_attachments != 0) or (card_id not in stats_map):
                         upsert_task_stats(card_id, new_comments, new_attachments)
+                        stats_map[card_id] = {"comments_count": new_comments, "attachments_count": new_attachments}
 
                 assigned_logins_db = get_task_assignees(card_id)
                 assigned_logins_api = set(item.get('assigned_logins', []))
                 new_assignees = assigned_logins_api - assigned_logins_db
                 for login in new_assignees:
                     save_task_assignee(card_id, login)
+
                 tg_ids = [login_map[login] for login in assigned_logins_api if login in login_map]
+
                 for login in new_assignees:
                     tg_id = login_map.get(login)
                     if tg_id:
@@ -197,34 +202,8 @@ def poll_new_tasks():
                             user_msg,
                             reply_markup=kb,
                         )
+
                 if not saved:
-                    for tg_id in tg_ids:
-                        kb = InlineKeyboardMarkup()
-                        prev_stack_id = item['prev_stack_id']
-                        next_stack_id = item['next_stack_id']
-                        if prev_stack_id is not None:
-                            kb.add(InlineKeyboardButton(
-                                text=f"⬅ {item['prev_stack_title']}",
-                                callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{prev_stack_id}"
-                            ))
-                        if next_stack_id is not None:
-                            kb.add(InlineKeyboardButton(
-                                text=f"➡ {item['next_stack_title']}",
-                                callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{next_stack_id}"
-                            ))
-                        user_msg = (
-                            f"🆕 Новая задача: *{item['title']}*\n"
-                            f"Board: {item['board_title']}\n"
-                            f"Column: {item['stack_title']}\n"
-                            f"Due: {item['duedate'] or '—'}\n"
-                            f"{item['description'] or '—'}"
-                        )
-                        kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
-                        send_message_limited(
-                            tg_id,
-                            user_msg,
-                            reply_markup=kb,
-                        )
                     send_log(
                         f"🆕 *Новая задача* c ID {cid_link}: {item['title']}\n"
                         f"Board: {item['board_title']}\n"
@@ -241,7 +220,6 @@ def poll_new_tasks():
                                 tg_id,
                                 f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
                                 reply_markup=kb,
-
                             )
                         send_log(
                             f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
