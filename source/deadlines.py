@@ -136,14 +136,14 @@ def poll_deadlines():
             login_map = get_user_map()
 
             t0 = time.time()
-            cards = fetch_all_tasks() #get_saved_tasks_for_deadlines()
+            cards = get_saved_tasks_for_deadlines()
             fetch_sec = time.time() - t0
 
             for c in cards:
                 if c.get("duedate") and c["duedate"].tzinfo is None:
                     c["duedate"] = c["duedate"].replace(tzinfo=timezone.utc)
 
-            saved_map = get_saved_tasks() #get_saved_tasks_for_deadlines() тут этот цикл по факту и не нужен
+            '''saved_map = get_saved_tasks() #get_saved_tasks_for_deadlines() тут этот цикл по факту и не нужен
             for it in cards:
                 cid = it["card_id"]
                 prev = saved_map.get(cid)
@@ -151,7 +151,7 @@ def poll_deadlines():
                     old_due = _to_utc_naive(prev.get("duedate"))
                     new_due = _to_utc_naive(it.get("duedate"))
                     if old_due != new_due:
-                        reset_sent_for_card(cid)
+                        reset_sent_for_card(cid)'''
 
             last_map = get_last_sent_map()
             per_user: dict[str, list[tuple[str, str, int]]] = {}

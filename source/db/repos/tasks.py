@@ -118,10 +118,16 @@ def get_saved_tasks_for_deadlines():
         t['assigned_logins'] = t['assigned_logins'].split()
     return tasks
 
-def get_tasks_from_users(tg_id):
+def get_tasks_from_users(login):
     conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tasks WHERE tg_id = %s", (tg_id,))
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+                    SELECT tasks.* FROM tasks 
+                    JOIN task_assignees ON tasks.card_id = task_assignees.card_id 
+                    WHERE nc_login = %s 
+                    GROUP BY card_id
+                    """,
+                   (login,))
     tasks = cursor.fetchall()
     cursor.close()
     conn.close()

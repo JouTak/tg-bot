@@ -130,7 +130,7 @@ def poll_new_tasks():
                         text = change_description(saved['description'], item['description'])
                         changes.append(f"Описание изменилось: \n{text}")
 
-                    if changes or (etag_old is None) or (etag_new is None) or ((item['prev_stack_id'] is None) and (item['next_stack_id'] is None)):
+                    if changes or (etag_old is None) or (etag_new is None) or ((saved['prev_stack_id'] is None) and (saved['next_stack_id'] is None)):
                         changes_flag = True
                         update_task_in_db(
                             card_id, item['title'], item['description'],

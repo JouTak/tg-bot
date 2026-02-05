@@ -33,7 +33,7 @@ def show_user_cards(message):
         return
     login = saved_login
     send_message_limited(chat_id, "Ищу задачи...")
-    tasks = get_tasks_from_users(chat_id)
+    tasks = get_tasks_from_users(login)
     flag_is_need_get_information = False
 
     for t in tasks:
