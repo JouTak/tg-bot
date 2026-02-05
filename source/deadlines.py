@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from source.app_logging import logger
 from source.connections.nextcloud_api import fetch_all_tasks
 from source.db.repos.users import get_user_map
-from source.db.repos.tasks import get_saved_tasks
+from source.db.repos.tasks import get_saved_tasks, get_saved_tasks_for_deadlines
 from source.db.repos.deadlines import get_last_sent_map, mark_sent, reset_sent_for_card
 from source.connections.sender import send_message_limited
 from source.links import card_url
@@ -118,6 +118,7 @@ def poll_deadlines():
     POST24_RANK = FIXED_RANK["post_24h"]
 
     while True:
+        start_time = time.time()
         try:
             logger.info("DEADLINES: Начинается плановая проверка дедлайнов")
 
@@ -135,14 +136,14 @@ def poll_deadlines():
             login_map = get_user_map()
 
             t0 = time.time()
-            cards = fetch_all_tasks()
+            cards = fetch_all_tasks() #get_saved_tasks_for_deadlines()
             fetch_sec = time.time() - t0
 
             for c in cards:
                 if c.get("duedate") and c["duedate"].tzinfo is None:
                     c["duedate"] = c["duedate"].replace(tzinfo=timezone.utc)
 
-            saved_map = get_saved_tasks()
+            saved_map = get_saved_tasks() #get_saved_tasks_for_deadlines() тут этот цикл по факту и не нужен
             for it in cards:
                 cid = it["card_id"]
                 prev = saved_map.get(cid)
@@ -164,7 +165,7 @@ def poll_deadlines():
                     continue
                 with_due += 1
 
-                if item.get("done") is not None:
+                if (item.get("done") is not None) or ((item.get("done") is None) and (item.get("prev_stack_id") is None) and (item.get("next_stack_id") is None)):
                     continue
 
                 assigned = set(item.get("assigned_logins") or [])
@@ -264,5 +265,7 @@ def poll_deadlines():
         except Exception:
             logger.exception("DEADLINES: сбой цикла")
             logger.debug(traceback.format_exc())
+        end_time = time.time()
+        print(f"Время выполнения: {end_time - start_time} секунд")
 
         time.sleep(DEADLINES_INTERVAL)

@@ -4,7 +4,7 @@ from source.app_logging import logger
 from source.connections.bot_factory import bot
 from source.connections.sender import send_message_limited
 from source.db.repos.users import get_login_by_tg_id, save_login_to_db
-from source.db.repos.tasks import save_task_to_db
+from source.db.repos.tasks import save_task_to_db, get_tasks_from_users
 from source.db.repos.boards import save_board_topic
 from source.connections.nextcloud_api import fetch_user_tasks, get_board_title
 
@@ -33,19 +33,33 @@ def show_user_cards(message):
         return
     login = saved_login
     send_message_limited(chat_id, "Ищу задачи...")
-    tasks = fetch_user_tasks(login)
+    tasks = get_tasks_from_users(chat_id)
+    flag_is_need_get_information = False
+
     for t in tasks:
-        save_task_to_db(
-            t['card_id'],
-            t['title'],
-            t['description'],
-            t['board_id'],
-            t['board_title'],
-            t['stack_id'],
-            t['stack_title'],
-            t['duedate'],
-            t['etag']
-        )
+        if (t['prev_stack_id'] is None) and (t['next_stack_id'] is None):
+            flag_is_need_get_information = True
+            tasks = fetch_user_tasks(login)
+            break
+
+    for t in tasks:
+        if flag_is_need_get_information:
+            save_task_to_db(
+                t['card_id'],
+                t['title'],
+                t['description'],
+                t['board_id'],
+                t['board_title'],
+                t['stack_id'],
+                t['stack_title'],
+                t['prev_stack_id'],
+                t['prev_stack_title'],
+                t['next_stack_id'],
+                t['next_stack_title'],
+                t['duedate'],
+                t['done'],
+                t['etag']
+            )
         kb = InlineKeyboardMarkup()
         if t['prev_stack_id'] is not None:
             kb.add(InlineKeyboardButton(
