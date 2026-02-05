@@ -51,9 +51,7 @@ def change_description(old_description, new_description):
             if change_text[-1] == '\n': change_text = change_text[:-1]
     else:
         old_desc = re.split(r"[.!?;\n]+", old_description)
-        print(old_desc)
         new_desc = re.split(r"[.!?;\n]+", new_description)
-        print(new_desc)
         diff = difflib.ndiff(old_desc, new_desc)
         for d in diff:
             if d[2:].lstrip() == '':
