@@ -50,8 +50,12 @@ def change_description(old_description, new_description):
         if change_text != '':
             if change_text[-1] == '\n': change_text = change_text[:-1]
     else:
-        old_desc = re.split(r"[.!?;\n]+", old_description)
-        new_desc = re.split(r"[.!?;\n]+", new_description)
+        old_desc = re.split(r'(?<=[.!?])\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}', old_description.strip())
+        old_desc = [s.strip() for s in old_desc if s.strip()]
+
+        new_desc = re.split(r'(?<=[.!?])\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}', new_description.strip())
+        new_desc = [s.strip() for s in new_desc if s.strip()]
+
         diff = difflib.ndiff(old_desc, new_desc)
         for d in diff:
             if d[2:].lstrip() == '':

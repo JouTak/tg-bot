@@ -60,6 +60,10 @@ def show_user_cards(message):
                 t['done'],
                 t['etag']
             )
+        if t['stack_title'] == "готово":
+            print("kek")
+            continue
+
         kb = InlineKeyboardMarkup()
         if t['prev_stack_id'] is not None:
             kb.add(InlineKeyboardButton(
