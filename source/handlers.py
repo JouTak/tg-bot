@@ -61,7 +61,6 @@ def show_user_cards(message):
                 t['etag']
             )
         if t['stack_title'] == "готово":
-            print("kek")
             continue
 
         kb = InlineKeyboardMarkup()
