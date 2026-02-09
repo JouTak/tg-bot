@@ -147,29 +147,37 @@ def poll_new_tasks():
                     inc_comments = new_comments - int(old_stats.get('comments_count', 0))
                     inc_attachments = new_attachments - int(old_stats.get('attachments_count', 0))
 
+                    kb = InlineKeyboardMarkup()
+                    kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                     if inc_comments > 0:
                         send_log(
                             "💬 Новые комментарии:" + "\n"
-                            f"{inc_comments} в «{item['title']}» (ID: {cid_link})",
-                            board_id=item['board_id']
+                            f"{inc_comments} в «{item['title']}»",
+                            board_id=item['board_id'],
+                            reply_markup=kb,
                         )
                     elif inc_comments < 0:
                         send_log(
                             "🗑 Удалены комментарии: "+"\n"
-                            f"{-inc_comments} в «{item['title']}» (ID: {cid_link})",
-                            board_id=item['board_id'])
+                            f"{-inc_comments} в «{item['title']}»",
+                            board_id=item['board_id'],
+                            reply_markup=kb,
+                        )
 
                     if inc_attachments > 0:
                         send_log(
                             "📎 Новые вложения:" + "\n"
-                            f"{inc_attachments} в «{item['title']}» (ID: {cid_link})",
-                            board_id=item['board_id']
+                            f"{inc_attachments} в «{item['title']}»",
+                            board_id=item['board_id'],
+                            reply_markup=kb,
                         )
                     elif inc_attachments < 0:
                         send_log(
                             "🗑 Удалены вложения: "+"\n"
-                            f" {-inc_attachments} в «{item['title']}» (ID: {cid_link})",
-                            board_id=item['board_id'])
+                            f" {-inc_attachments} в «{item['title']}»",
+                            board_id=item['board_id'],
+                            reply_markup=kb,
+                        )
 
                     if (inc_comments != 0) or (inc_attachments != 0) or (card_id not in stats_map):
                         upsert_task_stats(card_id, new_comments, new_attachments)
