@@ -4,6 +4,9 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=${GIT_COMMIT}
+
 RUN apt-get update \
   && apt-get install -y --no-install-recommends build-essential gcc ca-certificates \
   && rm -rf /var/lib/apt/lists/*

@@ -60,7 +60,10 @@ jobs:
         run: |
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           IMAGE="ghcr.io/${OWNER}/tg-itmocraft"
-          docker build -t $IMAGE:latest -f ./Dockerfile .
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          docker build \
+            --build-arg GIT_COMMIT=$SHORT_SHA \
+            -t $IMAGE:latest -f ./Dockerfile .
           docker tag $IMAGE:latest $IMAGE:${{ github.run_number }}
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
