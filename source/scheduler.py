@@ -223,17 +223,18 @@ def poll_new_tasks():
                     )
                 else:
                     if changes:
+                        kb = InlineKeyboardMarkup()
+                        kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                         for tg_id in tg_ids:
-                            kb = InlineKeyboardMarkup()
-                            kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                             send_message_limited(
                                 tg_id,
                                 f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
                                 reply_markup=kb,
                             )
                         send_log(
-                            f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
-                            board_id=item['board_id']
+                            f"✏️ *Изменения в карточке* «{item['title']}»:\n" + "\n".join(changes),
+                            board_id=item['board_id'],
+                            reply_markup=kb,
                         )
 
             logger.info("CLOUD: " + ("изменения найдены." if changes_flag else "изменений не обнаружено."))

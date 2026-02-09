@@ -60,7 +60,7 @@ def show_user_cards(message):
                 t['done'],
                 t['etag']
             )
-        if t['stack_title'] == "готово":
+        if t['done'] is not None:
             continue
 
         kb = InlineKeyboardMarkup()
