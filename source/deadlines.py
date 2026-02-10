@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from source.app_logging import logger
 from source.connections.nextcloud_api import fetch_all_tasks
 from source.db.repos.users import get_user_map
-from source.db.repos.tasks import get_saved_tasks
+from source.db.repos.tasks import get_saved_tasks, get_saved_tasks_for_deadlines
 from source.db.repos.deadlines import get_last_sent_map, mark_sent, reset_sent_for_card
 from source.connections.sender import send_message_limited
 from source.links import card_url
@@ -135,22 +135,12 @@ def poll_deadlines():
             login_map = get_user_map()
 
             t0 = time.time()
-            cards = fetch_all_tasks()
+            cards = get_saved_tasks_for_deadlines()
             fetch_sec = time.time() - t0
 
             for c in cards:
                 if c.get("duedate") and c["duedate"].tzinfo is None:
                     c["duedate"] = c["duedate"].replace(tzinfo=timezone.utc)
-
-            saved_map = get_saved_tasks()
-            for it in cards:
-                cid = it["card_id"]
-                prev = saved_map.get(cid)
-                if prev:
-                    old_due = _to_utc_naive(prev.get("duedate"))
-                    new_due = _to_utc_naive(it.get("duedate"))
-                    if old_due != new_due:
-                        reset_sent_for_card(cid)
 
             last_map = get_last_sent_map()
             per_user: dict[str, list[tuple[str, str, int]]] = {}
@@ -164,7 +154,7 @@ def poll_deadlines():
                     continue
                 with_due += 1
 
-                if item.get("done") is not None:
+                if (item.get("done") is not None) or ((item.get("done") is None) and (item.get("prev_stack_id") is None) and (item.get("next_stack_id") is None)):
                     continue
 
                 assigned = set(item.get("assigned_logins") or [])

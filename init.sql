@@ -7,21 +7,31 @@ CREATE TABLE IF NOT EXISTS users (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS tasks (
-  card_id     INT             NOT NULL PRIMARY KEY,
-  title       VARCHAR(255)    NOT NULL,
-  description TEXT            NOT NULL,
-  board_id    INT             NOT NULL,
-  board_title VARCHAR(100)    NOT NULL,
-  stack_id    INT             NOT NULL,
-  stack_title VARCHAR(100)    NOT NULL,
-  duedate     DATETIME        NULL,
-  created_at  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  etag        VARCHAR(255)    DEFAULT NULL
+  card_id           INT             NOT NULL PRIMARY KEY,
+  title             VARCHAR(255)    NOT NULL,
+  description       TEXT            NOT NULL,
+  board_id          INT             NOT NULL,
+  board_title       VARCHAR(100)    NOT NULL,
+  stack_id          INT             NOT NULL,
+  stack_title       VARCHAR(100)    NOT NULL,
+  duedate           DATETIME        NULL,
+  created_at        TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  etag              VARCHAR(255)    DEFAULT NULL,
+  prev_stack_id     INT             DEFAULT NULL,
+  prev_stack_title  VARCHAR(100)    DEFAULT NULL,
+  next_stack_id     INT             DEFAULT NULL,
+  next_stack_title  VARCHAR(100)    DEFAULT NULL,
+  done              TIMESTAMP       DEFAULT NULL
 ) ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_unicode_ci;
 
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS etag VARCHAR(255) DEFAULT NULL;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS prev_stack_id INT DEFAULT NULL;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS prev_stack_title VARCHAR(255) DEFAULT NULL;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS next_stack_id INT DEFAULT NULL;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS next_stack_title VARCHAR(255) DEFAULT NULL;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS done TIMESTAMP DEFAULT NULL;
 
 CREATE TABLE IF NOT EXISTS task_assignees (
   card_id INT NOT NULL,

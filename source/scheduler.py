@@ -24,10 +24,10 @@ def change_description(old_description, new_description):
     if ('[ ]' in new_description) or ('[x]' in new_description):
         old_desc = old_description.split('\n')
         new_desc = new_description.split('\n')
-        def find_changes(desc, desription, sign, format):
+        def find_changes(desc, description, sign, format):
             result = ''
             for point in range(len(desc)):
-                if desc[point][5:] not in desription:
+                if desc[point][5:] not in description:
                     if desc[point][:2] == '- ':
                         result += f'\\\\\\{format}{sign} ' + desc[point][2:] + f'{format}///\n'
                     else:
@@ -50,8 +50,12 @@ def change_description(old_description, new_description):
         if change_text != '':
             if change_text[-1] == '\n': change_text = change_text[:-1]
     else:
-        old_desc = re.split(r"[.!?;\n]+", old_description)
-        new_desc = re.split(r"[.!?;\n]+", new_description)
+        old_desc = re.split(r'(?<=[.!?])\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}', old_description.strip())
+        old_desc = [s.strip() for s in old_desc if s.strip()]
+
+        new_desc = re.split(r'(?<=[.!?])\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}', new_description.strip())
+        new_desc = [s.strip() for s in new_desc if s.strip()]
+
         diff = difflib.ndiff(old_desc, new_desc)
         for d in diff:
             if d[2:].lstrip() == '':
@@ -104,7 +108,10 @@ def poll_new_tasks():
                     save_task_basic(
                         card_id, item['title'], item['description'],
                         item['board_id'], item['board_title'],
-                        item['stack_id'], item['stack_title'], item['duedate'], etag_new
+                        item['stack_id'], item['stack_title'],
+                        item['prev_stack_id'], item['prev_stack_title'],
+                        item['next_stack_id'], item['next_stack_title'],
+                        item['duedate'], item['done'], etag_new
                     )
                     upsert_task_stats(card_id, new_comments, new_attachments)
                     stats_map[card_id] = {
@@ -125,41 +132,52 @@ def poll_new_tasks():
                         text = change_description(saved['description'], item['description'])
                         changes.append(f"Описание изменилось: \n{text}")
 
-                    if changes or (etag_old is None) or (etag_new is None):
+                    if changes or (etag_old is None) or (etag_new is None) or ((saved['prev_stack_id'] is None) and (saved['next_stack_id'] is None)):
                         changes_flag = True
                         update_task_in_db(
                             card_id, item['title'], item['description'],
                             item['board_id'], item['board_title'],
-                            item['stack_id'], item['stack_title'], item['duedate'], etag_new
+                            item['stack_id'], item['stack_title'],
+                            item['prev_stack_id'], item['prev_stack_title'],
+                            item['next_stack_id'], item['next_stack_title'],
+                            item['duedate'], item['done'], etag_new
                         )
 
                     old_stats = stats_map.get(card_id, {"comments_count": 0, "attachments_count": 0})
                     inc_comments = new_comments - int(old_stats.get('comments_count', 0))
                     inc_attachments = new_attachments - int(old_stats.get('attachments_count', 0))
 
+                    kb = InlineKeyboardMarkup()
+                    kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                     if inc_comments > 0:
                         send_log(
                             "💬 Новые комментарии:" + "\n"
-                            f"{inc_comments} в «{item['title']}» (ID: {cid_link})",
-                            board_id=item['board_id']
+                            f"{inc_comments} в «{item['title']}»",
+                            board_id=item['board_id'],
+                            reply_markup=kb,
                         )
                     elif inc_comments < 0:
                         send_log(
                             "🗑 Удалены комментарии: "+"\n"
-                            f"{-inc_comments} в «{item['title']}» (ID: {cid_link})",
-                            board_id=item['board_id'])
+                            f"{-inc_comments} в «{item['title']}»",
+                            board_id=item['board_id'],
+                            reply_markup=kb,
+                        )
 
                     if inc_attachments > 0:
                         send_log(
                             "📎 Новые вложения:" + "\n"
-                            f"{inc_attachments} в «{item['title']}» (ID: {cid_link})",
-                            board_id=item['board_id']
+                            f"{inc_attachments} в «{item['title']}»",
+                            board_id=item['board_id'],
+                            reply_markup=kb,
                         )
                     elif inc_attachments < 0:
                         send_log(
                             "🗑 Удалены вложения: "+"\n"
-                            f" {-inc_attachments} в «{item['title']}» (ID: {cid_link})",
-                            board_id=item['board_id'])
+                            f" {-inc_attachments} в «{item['title']}»",
+                            board_id=item['board_id'],
+                            reply_markup=kb,
+                        )
 
                     if (inc_comments != 0) or (inc_attachments != 0) or (card_id not in stats_map):
                         upsert_task_stats(card_id, new_comments, new_attachments)
@@ -213,17 +231,18 @@ def poll_new_tasks():
                     )
                 else:
                     if changes:
+                        kb = InlineKeyboardMarkup()
+                        kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                         for tg_id in tg_ids:
-                            kb = InlineKeyboardMarkup()
-                            kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                             send_message_limited(
                                 tg_id,
                                 f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
                                 reply_markup=kb,
                             )
                         send_log(
-                            f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
-                            board_id=item['board_id']
+                            f"✏️ *Изменения в карточке* «{item['title']}»:\n" + "\n".join(changes),
+                            board_id=item['board_id'],
+                            reply_markup=kb,
                         )
 
             logger.info("CLOUD: " + ("изменения найдены." if changes_flag else "изменений не обнаружено."))
