@@ -84,6 +84,24 @@ def _parse_due_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional[
     return None
 
 
+def _parse_done_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional[datetime]:
+
+    if value is None or value == "" or value is False or value == 0 or value == "0":
+        return None
+
+    if isinstance(value, str):
+        s = value.strip().lower()
+        if s in ("false", "0", "no", "off", "none", "null"):
+            return None
+        if s in ("true", "1", "yes", "on"):
+            return datetime.utcnow().replace(microsecond=0)
+
+    if value is True or value == 1:
+        return datetime.utcnow().replace(microsecond=0)
+
+    return _parse_due_utc_naive(value, card_id=card_id)
+
+
 def get_board_title(board_id):
     boards_resp = requests.get(f"{BASE_URL}/boards", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
     boards_resp.raise_for_status()
@@ -143,6 +161,9 @@ def fetch_user_tasks(login):
                 duedate_raw = card.get('duedate') or card.get('dueDate')
                 duedate_dt = _parse_due_utc_naive(duedate_raw, card_id=card.get('id'))
 
+                done_raw = card.get('done')
+                done_dt = _parse_done_utc_naive(done_raw, card_id=card.get('id'))
+
                 comments_count, attachments_count = _extract_counts(card)
                 etag = card.get('ETag') or card.get('Etag') or card.get('etag')
 
@@ -152,7 +173,7 @@ def fetch_user_tasks(login):
                     'stack_id': stack_id, 'stack_title': stack_title,
                     'prev_stack_id': prev_stack_id, 'prev_stack_title': prev_stack_title,
                     'next_stack_id': next_stack_id, 'next_stack_title': next_stack_title,
-                    'duedate': duedate_dt, 'assigned_logins': assigned,
+                    'duedate': duedate_dt, 'done': done_dt, 'assigned_logins': assigned,
                     'comments_count': comments_count, 'attachments_count': attachments_count,
                     'etag': etag
                 })
@@ -215,7 +236,8 @@ def fetch_all_tasks():
                     next_stack_title = stacks[idx + 1]['title'] if idx < len(stacks) - 1 else None
 
                     comments_count, attachments_count = _extract_counts(card)
-                    done = card.get('done')
+                    done_raw = card.get('done')
+                    done = _parse_done_utc_naive(done_raw, card_id=card.get('id'))
                     etag = card.get('ETag') or card.get('Etag') or card.get('etag')
 
                     result.append({

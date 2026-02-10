@@ -26,10 +26,10 @@ def save_task_to_db(card_id, title, description, board_id, board_title, stack_id
           stack_title=VALUES(stack_title),
           duedate=VALUES(duedate),
           etag=VALUES(etag),
-          prev_stack_id=VALUES(stack_id),
-          prev_stack_title=VALUES(stack_title),
-          next_stack_id=VALUES(stack_id),
-          next_stack_title=VALUES(stack_title),
+          prev_stack_id=VALUES(prev_stack_id),
+          prev_stack_title=VALUES(prev_stack_title),
+          next_stack_id=VALUES(next_stack_id),
+          next_stack_title=VALUES(next_stack_title),
           done=VALUES(done)
         """,
         (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate, etag, prev_stack_id, prev_stack_title, next_stack_id, next_stack_title, done)
@@ -55,10 +55,10 @@ def save_task_basic(card_id, title, description, board_id, board_title, stack_id
           stack_title=VALUES(stack_title),
           duedate=VALUES(duedate),
           etag=VALUES(etag),
-          prev_stack_id=VALUES(stack_id),
-          prev_stack_title=VALUES(stack_title),
-          next_stack_id=VALUES(stack_id),
-          next_stack_title=VALUES(stack_title),
+          prev_stack_id=VALUES(prev_stack_id),
+          prev_stack_title=VALUES(prev_stack_title),
+          next_stack_id=VALUES(next_stack_id),
+          next_stack_title=VALUES(next_stack_title),
           done=VALUES(done)
         """,
         (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate, etag, prev_stack_id, prev_stack_title, next_stack_id, next_stack_title, done)
