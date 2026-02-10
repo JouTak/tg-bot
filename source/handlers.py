@@ -60,6 +60,9 @@ def show_user_cards(message):
                 t['done'],
                 t['etag']
             )
+        if t['done'] is not None:
+            continue
+
         kb = InlineKeyboardMarkup()
         if t['prev_stack_id'] is not None:
             kb.add(InlineKeyboardButton(

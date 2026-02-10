@@ -118,7 +118,6 @@ def poll_deadlines():
     POST24_RANK = FIXED_RANK["post_24h"]
 
     while True:
-        start_time = time.time()
         try:
             logger.info("DEADLINES: Начинается плановая проверка дедлайнов")
 
@@ -142,16 +141,6 @@ def poll_deadlines():
             for c in cards:
                 if c.get("duedate") and c["duedate"].tzinfo is None:
                     c["duedate"] = c["duedate"].replace(tzinfo=timezone.utc)
-
-            '''saved_map = get_saved_tasks() #get_saved_tasks_for_deadlines() тут этот цикл по факту и не нужен
-            for it in cards:
-                cid = it["card_id"]
-                prev = saved_map.get(cid)
-                if prev:
-                    old_due = _to_utc_naive(prev.get("duedate"))
-                    new_due = _to_utc_naive(it.get("duedate"))
-                    if old_due != new_due:
-                        reset_sent_for_card(cid)'''
 
             last_map = get_last_sent_map()
             per_user: dict[str, list[tuple[str, str, int]]] = {}
@@ -265,7 +254,5 @@ def poll_deadlines():
         except Exception:
             logger.exception("DEADLINES: сбой цикла")
             logger.debug(traceback.format_exc())
-        end_time = time.time()
-        print(f"Время выполнения: {end_time - start_time} секунд")
 
         time.sleep(DEADLINES_INTERVAL)

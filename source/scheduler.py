@@ -50,8 +50,12 @@ def change_description(old_description, new_description):
         if change_text != '':
             if change_text[-1] == '\n': change_text = change_text[:-1]
     else:
-        old_desc = re.split(r"[.!?;\n]+", old_description)
-        new_desc = re.split(r"[.!?;\n]+", new_description)
+        old_desc = re.split(r'(?<=[.!?])\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}', old_description.strip())
+        old_desc = [s.strip() for s in old_desc if s.strip()]
+
+        new_desc = re.split(r'(?<=[.!?])\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}', new_description.strip())
+        new_desc = [s.strip() for s in new_desc if s.strip()]
+
         diff = difflib.ndiff(old_desc, new_desc)
         for d in diff:
             if d[2:].lstrip() == '':
@@ -143,29 +147,37 @@ def poll_new_tasks():
                     inc_comments = new_comments - int(old_stats.get('comments_count', 0))
                     inc_attachments = new_attachments - int(old_stats.get('attachments_count', 0))
 
+                    kb = InlineKeyboardMarkup()
+                    kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                     if inc_comments > 0:
                         send_log(
                             "💬 Новые комментарии:" + "\n"
-                            f"{inc_comments} в «{item['title']}» (ID: {cid_link})",
-                            board_id=item['board_id']
+                            f"{inc_comments} в «{item['title']}»",
+                            board_id=item['board_id'],
+                            reply_markup=kb,
                         )
                     elif inc_comments < 0:
                         send_log(
                             "🗑 Удалены комментарии: "+"\n"
-                            f"{-inc_comments} в «{item['title']}» (ID: {cid_link})",
-                            board_id=item['board_id'])
+                            f"{-inc_comments} в «{item['title']}»",
+                            board_id=item['board_id'],
+                            reply_markup=kb,
+                        )
 
                     if inc_attachments > 0:
                         send_log(
                             "📎 Новые вложения:" + "\n"
-                            f"{inc_attachments} в «{item['title']}» (ID: {cid_link})",
-                            board_id=item['board_id']
+                            f"{inc_attachments} в «{item['title']}»",
+                            board_id=item['board_id'],
+                            reply_markup=kb,
                         )
                     elif inc_attachments < 0:
                         send_log(
                             "🗑 Удалены вложения: "+"\n"
-                            f" {-inc_attachments} в «{item['title']}» (ID: {cid_link})",
-                            board_id=item['board_id'])
+                            f" {-inc_attachments} в «{item['title']}»",
+                            board_id=item['board_id'],
+                            reply_markup=kb,
+                        )
 
                     if (inc_comments != 0) or (inc_attachments != 0) or (card_id not in stats_map):
                         upsert_task_stats(card_id, new_comments, new_attachments)
@@ -219,17 +231,18 @@ def poll_new_tasks():
                     )
                 else:
                     if changes:
+                        kb = InlineKeyboardMarkup()
+                        kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                         for tg_id in tg_ids:
-                            kb = InlineKeyboardMarkup()
-                            kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                             send_message_limited(
                                 tg_id,
                                 f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
                                 reply_markup=kb,
                             )
                         send_log(
-                            f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
-                            board_id=item['board_id']
+                            f"✏️ *Изменения в карточке* «{item['title']}»:\n" + "\n".join(changes),
+                            board_id=item['board_id'],
+                            reply_markup=kb,
                         )
 
             logger.info("CLOUD: " + ("изменения найдены." if changes_flag else "изменений не обнаружено."))
