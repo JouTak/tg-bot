@@ -37,7 +37,7 @@ def show_user_cards(message):
     flag_is_need_get_information = False
 
     for t in tasks:
-        if (t['prev_stack_id'] is None) and (t['next_stack_id'] is None):
+        if (t.get('prev_stack_id') is None) and (t.get('next_stack_id') is None):
             flag_is_need_get_information = True
             tasks = fetch_user_tasks(login)
             break
@@ -52,27 +52,27 @@ def show_user_cards(message):
                 t['board_title'],
                 t['stack_id'],
                 t['stack_title'],
-                t['prev_stack_id'],
-                t['prev_stack_title'],
-                t['next_stack_id'],
-                t['next_stack_title'],
-                t['duedate'],
-                t['done'],
-                t['etag']
+                t.get('prev_stack_id'),
+                t.get('prev_stack_title'),
+                t.get('next_stack_id'),
+                t.get('next_stack_title'),
+                t.get('duedate'),
+                t.get('done'),
+                t.get('etag')
             )
-        if t['done'] is not None:
+        if t.get('done') is not None:
             continue
 
         kb = InlineKeyboardMarkup()
-        if t['prev_stack_id'] is not None:
+        if t.get('prev_stack_id') is not None:
             kb.add(InlineKeyboardButton(
-                text=f"⬅ {t['prev_stack_title']}",
-                callback_data=f"move:{t['board_id']}:{t['stack_id']}:{t['card_id']}:{t['prev_stack_id']}"
+                text=f"⬅ {t.get('prev_stack_title')}",
+                callback_data=f"move:{t['board_id']}:{t['stack_id']}:{t['card_id']}:{t.get('prev_stack_id')}"
             ))
-        if t['next_stack_id'] is not None:
+        if t.get('next_stack_id') is not None:
             kb.add(InlineKeyboardButton(
-                text=f"➡ {t['next_stack_title']}",
-                callback_data=f"move:{t['board_id']}:{t['stack_id']}:{t['card_id']}:{t['next_stack_id']}"
+                text=f"➡ {t.get('next_stack_title')}",
+                callback_data=f"move:{t['board_id']}:{t['stack_id']}:{t['card_id']}:{t.get('next_stack_id')}"
             ))
         msg = (
             f"{t['title']}\n"

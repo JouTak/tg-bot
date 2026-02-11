@@ -91,8 +91,8 @@ def poll_new_tasks():
 
             for item in all_cards:
                 changes = []
-                card_id = item['card_id']; board_id = item['board_id']
-                cid_link = f'<a href="{card_url(item["board_id"], card_id)}">{card_id}</a>'
+                card_id = item.get('card_id'); board_id = item.get('board_id')
+                cid_link = f'<a href="{card_url(item.get("board_id"), card_id)}">{card_id}</a>'
 
                 new_comments = int(item.get('comments_count', 0))
                 new_attachments = int(item.get('attachments_count', 0))
@@ -111,9 +111,9 @@ def poll_new_tasks():
                         card_id, item['title'], item['description'],
                         item['board_id'], item['board_title'],
                         item['stack_id'], item['stack_title'],
-                        item['prev_stack_id'], item['prev_stack_title'],
-                        item['next_stack_id'], item['next_stack_title'],
-                        item['duedate'], item['done'], etag_new
+                        item.get('prev_stack_id'), item.get('prev_stack_title'),
+                        item.get('next_stack_id'), item.get('next_stack_title'),
+                        item.get('duedate'), item.get('done'), etag_new
                     )
                     upsert_task_stats(card_id, new_comments, new_attachments)
                     stats_map[card_id] = {
@@ -134,15 +134,15 @@ def poll_new_tasks():
                         text = change_description(saved['description'], item['description'])
                         changes.append(f"Описание изменилось: \n{text}")
 
-                    if changes or (etag_old is None) or (etag_new is None) or need_mig_update:
+                    if changes or (etag_old is None) or (etag_new is None) or ((saved.get('prev_stack_id') is None) and (saved.get('next_stack_id') is None)):
                         changes_flag = True
                         update_task_in_db(
                             card_id, item['title'], item['description'],
                             item['board_id'], item['board_title'],
                             item['stack_id'], item['stack_title'],
-                            item['prev_stack_id'], item['prev_stack_title'],
-                            item['next_stack_id'], item['next_stack_title'],
-                            item['duedate'], item['done'], etag_new
+                            item.get('prev_stack_id'), item.get('prev_stack_title'),
+                            item.get('next_stack_id'), item.get('next_stack_title'),
+                            item.get('duedate'), item.get('done'), etag_new
                         )
 
                     old_stats = stats_map.get(card_id, {"comments_count": 0, "attachments_count": 0})
@@ -206,16 +206,16 @@ def poll_new_tasks():
                     tg_id = login_map.get(login)
                     if tg_id:
                         kb = InlineKeyboardMarkup()
-                        prev_stack_id = item['prev_stack_id']
-                        next_stack_id = item['next_stack_id']
+                        prev_stack_id = item.get('prev_stack_id')
+                        next_stack_id = item.get('next_stack_id')
                         if prev_stack_id is not None:
                             kb.add(InlineKeyboardButton(
-                                text=f"⬅ {item['prev_stack_title']}",
+                                text=f"⬅ {item.get('prev_stack_title')}",
                                 callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{prev_stack_id}"
                             ))
                         if next_stack_id is not None:
                             kb.add(InlineKeyboardButton(
-                                text=f"➡ {item['next_stack_title']}",
+                                text=f"➡ {item.get('next_stack_title')}",
                                 callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{next_stack_id}"
                             ))
                         user_msg = (
