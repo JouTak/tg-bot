@@ -103,6 +103,8 @@ def poll_new_tasks():
                 etag_old = saved.get('etag') if saved else None
                 etag_same = bool(saved and (etag_new is not None) and (etag_old == etag_new))
 
+                need_mig_update = (saved['prev_stack_id'] is None) and (saved['next_stack_id'] is None)
+
                 if not saved:
                     changes_flag = True
                     save_task_basic(
@@ -132,7 +134,7 @@ def poll_new_tasks():
                         text = change_description(saved['description'], item['description'])
                         changes.append(f"Описание изменилось: \n{text}")
 
-                    if changes or (etag_old is None) or (etag_new is None) or ((saved['prev_stack_id'] is None) and (saved['next_stack_id'] is None)):
+                    if changes or (etag_old is None) or (etag_new is None) or need_mig_update:
                         changes_flag = True
                         update_task_in_db(
                             card_id, item['title'], item['description'],
@@ -182,6 +184,15 @@ def poll_new_tasks():
                     if (inc_comments != 0) or (inc_attachments != 0) or (card_id not in stats_map):
                         upsert_task_stats(card_id, new_comments, new_attachments)
                         stats_map[card_id] = {"comments_count": new_comments, "attachments_count": new_attachments}
+                elif need_mig_update:
+                    update_task_in_db(
+                        card_id, item['title'], item['description'],
+                        item['board_id'], item['board_title'],
+                        item['stack_id'], item['stack_title'],
+                        item['prev_stack_id'], item['prev_stack_title'],
+                        item['next_stack_id'], item['next_stack_title'],
+                        item['duedate'], item['done'], etag_new
+                    )
 
                 assigned_logins_db = get_task_assignees(card_id)
                 assigned_logins_api = set(item.get('assigned_logins', []))
