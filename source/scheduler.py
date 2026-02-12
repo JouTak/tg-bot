@@ -10,7 +10,7 @@ from source.connections.sender import send_message_limited
 from source.connections.nextcloud_api import fetch_all_tasks
 from source.db.repos.users import get_user_map
 from source.db.repos.tasks import (
-    get_saved_tasks, save_task_basic, update_task_in_db,
+    get_saved_tasks, save_task_to_db, update_task_in_db,
     get_task_assignees, save_task_assignee,
     get_task_stats_map, upsert_task_stats
 )
@@ -103,11 +103,10 @@ def poll_new_tasks():
                 etag_old = saved.get('etag') if saved else None
                 etag_same = bool(saved and (etag_new is not None) and (etag_old == etag_new))
 
-                need_mig_update = (saved.get('prev_stack_id') is None) and (saved.get('next_stack_id') is None)
-
+                need_mig_update = bool(saved and (saved.get('prev_stack_id') is None) and (saved.get('next_stack_id') is None))
                 if not saved:
                     changes_flag = True
-                    save_task_basic(
+                    save_task_to_db(
                         card_id, item['title'], item['description'],
                         item['board_id'], item['board_title'],
                         item['stack_id'], item['stack_title'],
@@ -223,7 +222,8 @@ def poll_new_tasks():
                             f"Board: {item['board_title']}\n"
                             f"Column: {item['stack_title']}\n"
                             f"Due: {item['duedate'] or '—'}\n"
-                            f"{item['description'] or '-'}"
+                            f"{item['description'] or '-'}\n"
+                            f"Description: \n\\\\\\{item['description']}///"
                         )
                         kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                         send_message_limited(
@@ -233,12 +233,16 @@ def poll_new_tasks():
                         )
 
                 if not saved:
+                    kb = InlineKeyboardMarkup()
+                    kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                     send_log(
-                        f"🆕 *Новая задача* c ID {cid_link}: {item['title']}\n"
+                        f"🆕 *Новая задача*: {item['title']}\n"
                         f"Board: {item['board_title']}\n"
                         f"Column: {item['stack_title']}\n"
-                        f"Due: {item['duedate'] or '—'}",
-                        board_id=item['board_id']
+                        f"Due: {item['duedate'] or '—'}\n"
+                        f"Description: \n\\\\\\{item['description']}///",
+                        board_id=item['board_id'],
+                        reply_markup=kb,
                     )
                 else:
                     if changes:

@@ -34,32 +34,8 @@ def show_user_cards(message):
     login = saved_login
     send_message_limited(chat_id, "Ищу задачи...")
     tasks = get_tasks_from_users(login)
-    flag_is_need_get_information = False
 
     for t in tasks:
-        if (t.get('prev_stack_id') is None) and (t.get('next_stack_id') is None):
-            flag_is_need_get_information = True
-            tasks = fetch_user_tasks(login)
-            break
-
-    for t in tasks:
-        if flag_is_need_get_information:
-            save_task_to_db(
-                t['card_id'],
-                t['title'],
-                t['description'],
-                t['board_id'],
-                t['board_title'],
-                t['stack_id'],
-                t['stack_title'],
-                t.get('prev_stack_id'),
-                t.get('prev_stack_title'),
-                t.get('next_stack_id'),
-                t.get('next_stack_title'),
-                t.get('duedate'),
-                t.get('done'),
-                t.get('etag')
-            )
         if t.get('done') is not None:
             continue
 
