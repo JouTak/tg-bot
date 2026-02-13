@@ -20,6 +20,15 @@ from source.links import card_url
 
 
 def change_description(old_description, new_description):
+    """
+    Анализирует изменения описания карточки.
+    Выявляет:
+    - добавленные пункты
+    - удалённые пункты
+    - изменённые чекбоксы
+
+    Возвращает текст различий для уведомления.
+    """
     result_txt = ''; add_text = ''; remove_text = ''; change_text = ''
     if ('[ ]' in new_description) or ('[x]' in new_description):
         old_desc = old_description.split('\n')
@@ -78,6 +87,14 @@ def change_description(old_description, new_description):
 
 
 def poll_new_tasks():
+    """
+    Фоновый процесс:
+    - получает все задачи из Nextcloud
+    - сравнивает с БД
+    - определяет новые и изменённые карточки
+    - отправляет уведомления
+    - обновляет статистику комментариев и вложений
+    """
     logger.info(f"CLOUD: Запускается фоновый опрос задач, частота: {POLL_INTERVAL} секунд!")
     MSK = timezone(timedelta(hours=3))
     while True:
