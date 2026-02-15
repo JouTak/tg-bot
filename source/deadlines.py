@@ -25,6 +25,9 @@ except Exception:
 
 
 def _parse_quiet(s: str) -> tuple[int, int]:
+    """
+    Парсит строку формата "0-8" в часы тихого режима.
+    """
     try:
         a, b = s.split("-", 1)
         return int(a), int(b)
@@ -36,6 +39,9 @@ QUIET_START, QUIET_END = _parse_quiet(QUIET_HOURS)
 
 
 def _in_quiet_hours(now_local: datetime) -> bool:
+    """
+    Проверяет, попадает ли текущее время в тихие часы.
+    """
     h = now_local.hour
     if QUIET_START > QUIET_END:
         return (h >= QUIET_START) or (h < QUIET_END)
@@ -43,12 +49,24 @@ def _in_quiet_hours(now_local: datetime) -> bool:
 
 
 def _at_team_10(utc_dt: datetime) -> datetime:
+    """
+    Переводит дату в 10:00 по часовому поясу команды.
+    Используется для фиксированных напоминаний.
+    """
     local = utc_dt.astimezone(TEAM_TZ)
     local10 = local.replace(hour=10, minute=0, second=0, microsecond=0)
     return local10.astimezone(timezone.utc)
 
 
 def _fixed_schedule(due_utc: datetime) -> dict[str, datetime]:
+    """
+    Формирует расписание напоминаний:
+    - за 7 дней
+    - за 24 часа
+    - за 2 часа
+    - в момент дедлайна
+    - после дедлайна
+    """
     return {
         "pre_7d": _at_team_10(due_utc - timedelta(days=7)),
         "pre_24h": _at_team_10(due_utc - timedelta(days=1)),
@@ -60,10 +78,16 @@ def _fixed_schedule(due_utc: datetime) -> dict[str, datetime]:
 
 
 def _fmt_due_local(due_utc: datetime) -> str:
+    """
+    Форматирует дедлайн в локальное время команды.
+    """
     return due_utc.astimezone(TEAM_TZ).strftime("%Y-%m-%d %H:%M")
 
 
 def _fmt_delta(now: datetime, due: datetime) -> str:
+    """
+    Возвращает человекочитаемую разницу между текущим временем и дедлайном.
+    """
     delta = due - now
     neg = delta.total_seconds() < 0
     sec = int(abs(delta).total_seconds())
@@ -75,6 +99,9 @@ def _fmt_delta(now: datetime, due: datetime) -> str:
 
 
 def _line_for_stage(stage: str, item: dict, now_utc: datetime) -> str:
+    """
+    Формирует строку уведомления для конкретного этапа напоминания.
+    """
     cid = item["card_id"]
     title = item["title"]
     due = item["duedate"]
@@ -96,6 +123,9 @@ def _line_for_stage(stage: str, item: dict, now_utc: datetime) -> str:
 
 
 def _to_utc_naive(dt: datetime | None) -> datetime | None:
+    """
+    Приводит datetime к UTC без tzinfo (naive UTC).
+    """
     if not dt:
         return None
     if dt.tzinfo is None:
@@ -104,12 +134,22 @@ def _to_utc_naive(dt: datetime | None) -> datetime | None:
 
 
 def _sent_at_to_utc(sent_at: datetime) -> datetime:
+    """
+    Приводит datetime к UTC с сохранением tzinfo.
+    """
     if sent_at.tzinfo is None:
         return sent_at.replace(tzinfo=timezone.utc)
     return sent_at.astimezone(timezone.utc)
 
 
 def poll_deadlines():
+    """
+    Фоновый цикл проверки дедлайнов:
+    - проверяет задачи с дедлайнами
+    - определяет, какие уведомления нужно отправить
+    - отправляет их пользователям
+    - записывает факт отправки в БД
+    """
     logger.info(f"DEADLINES: Запускается фоновый опрос, частота {DEADLINES_INTERVAL} секунд!")
 
     FIXED = ["pre_7d", "pre_24h", "pre_2h", "due", "post_2h", "post_24h"]
