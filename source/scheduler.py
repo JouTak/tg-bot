@@ -239,8 +239,7 @@ def poll_new_tasks():
                             f"Board: {item['board_title']}\n"
                             f"Column: {item['stack_title']}\n"
                             f"Due: {item['duedate'] or '—'}\n"
-                            f"{item['description'] or '-'}\n"
-                            f"Description: \n\\\\\\{item['description']}///"
+                            f"Description: \n\\\\\\{item['description'] or '-'}///"
                         )
                         kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                         send_message_limited(
@@ -257,7 +256,7 @@ def poll_new_tasks():
                         f"Board: {item['board_title']}\n"
                         f"Column: {item['stack_title']}\n"
                         f"Due: {item['duedate'] or '—'}\n"
-                        f"Description: \n\\\\\\{item['description']}///",
+                        f"Description: \n\\\\\\{item['description'] or '-'}///",
                         board_id=item['board_id'],
                         reply_markup=kb,
                     )
