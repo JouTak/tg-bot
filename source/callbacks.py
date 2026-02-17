@@ -6,6 +6,9 @@ from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("move:"))
 def handle_card_move(call):
+    """
+    Перемещение карточки из одной колонки в другую
+    """
     _, board_id, current_stack_id, card_id, new_stack_id = call.data.split(":")
     board_id = int(board_id)
     current_stack_id = int(current_stack_id)

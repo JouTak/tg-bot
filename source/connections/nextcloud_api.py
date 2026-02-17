@@ -13,6 +13,9 @@ from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, POLL_INTERVAL
 
 
 def _extract_counts(card: dict) -> Tuple[int, int]:
+    """
+    Извлекает количество комментариев и вложений из объекта карточки.
+    """
     comments = card.get("commentsCount")
     if comments is None:
         comments = card.get("commentCount", 0)
@@ -23,6 +26,9 @@ def _extract_counts(card: dict) -> Tuple[int, int]:
 
 
 def _parse_due_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional[datetime]:
+    """
+    Преобразует дату дедлайна из API в datetime в UTC.
+    """
     if value is None or value == "":
         return None
 
@@ -85,7 +91,10 @@ def _parse_due_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional[
 
 
 def _parse_done_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional[datetime]:
-
+    """
+    Парсит поле "done" карточки и возвращает время завершения
+    в формате UTC naive (без tzinfo).
+    """
     if value is None or value == "" or value is False or value == 0 or value == "0":
         return None
 
@@ -103,6 +112,9 @@ def _parse_done_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional
 
 
 def get_board_title(board_id):
+    """
+    Возвращает название доски по ID.
+    """
     boards_resp = requests.get(f"{BASE_URL}/boards", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
     boards_resp.raise_for_status()
     boards = boards_resp.json()
@@ -113,6 +125,10 @@ def get_board_title(board_id):
 
 
 def fetch_user_tasks(login):
+    """
+    Получает задачи конкретного пользователя.
+    Используется для команды /mycards.
+    """
     logger.debug("CLOUD: получаю задачи пользователя")
     result = []
     boards_resp = requests.get(f"{BASE_URL}/boards", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
@@ -182,6 +198,10 @@ def fetch_user_tasks(login):
 
 
 def fetch_all_tasks():
+    """
+    Получает все задачи со всех досок из Nextcloud.
+    Используется в scheduler.
+    """
     while True:
         logger.debug("CLOUD: получаю все карточки")
         result = []

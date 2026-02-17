@@ -8,9 +8,19 @@ logger = logging.getLogger("source")
 _APP_DEBUG = APP_DEBUG=="1"
 
 def is_debug() -> bool:
+    """
+    Возвращает True, если приложение запущено в режиме отладки (APP_DEBUG=1).
+    """
     return _APP_DEBUG
 
 def setup_logging():
+    """
+    Настраивает логирование:
+    - вывод в консоль
+    - запись в файл bot.log
+    - уровень DEBUG или INFO
+    - отключает шумные логи библиотек requests/urllib3
+    """
     if logger.handlers:
         return logger
 

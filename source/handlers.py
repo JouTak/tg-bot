@@ -11,6 +11,10 @@ from source.connections.nextcloud_api import fetch_user_tasks, get_board_title
 
 @bot.message_handler(commands=['start'])
 def start_handler(message):
+    """
+    Обрабатывает команду /start.
+    Запрашивает логин Nextcloud, если он ещё не сохранён.
+    """
     chat_id = message.chat.id
     if message.chat.type != "private":
         send_message_limited(chat_id, "Эта команда может использоваться только в лс с ботом", message_thread_id=message.message_thread_id)
@@ -22,6 +26,11 @@ def start_handler(message):
 
 @bot.message_handler(commands=['mycards'])
 def show_user_cards(message):
+    """
+    Обрабатывает команду /mycards.
+    Отправляет пользователю список его активных карточек
+    с кнопками перемещения между колонками.
+    """
     logger.info("Поступила команда /mycards")
     chat_id = message.chat.id
     if message.chat.type != "private":
@@ -34,32 +43,8 @@ def show_user_cards(message):
     login = saved_login
     send_message_limited(chat_id, "Ищу задачи...")
     tasks = get_tasks_from_users(login)
-    flag_is_need_get_information = False
 
     for t in tasks:
-        if (t.get('prev_stack_id') is None) and (t.get('next_stack_id') is None):
-            flag_is_need_get_information = True
-            tasks = fetch_user_tasks(login)
-            break
-
-    for t in tasks:
-        if flag_is_need_get_information:
-            save_task_to_db(
-                t['card_id'],
-                t['title'],
-                t['description'],
-                t['board_id'],
-                t['board_title'],
-                t['stack_id'],
-                t['stack_title'],
-                t.get('prev_stack_id'),
-                t.get('prev_stack_title'),
-                t.get('next_stack_id'),
-                t.get('next_stack_title'),
-                t.get('duedate'),
-                t.get('done'),
-                t.get('etag')
-            )
         if t.get('done') is not None:
             continue
 
@@ -85,6 +70,11 @@ def show_user_cards(message):
 
 @bot.message_handler(commands=['whereami'])
 def whereami(m):
+    """
+    Команда /whereami.
+    Показывает chat_id и message_thread_id.
+    Используется для настройки.
+    """
     send_message_limited(
         m.chat.id,
         f"Ты находишься в чате с chat_id = {m.chat.id}\n"
@@ -94,6 +84,10 @@ def whereami(m):
 
 @bot.message_handler(commands=['setboardtopic'])
 def set_board_topic_handler(message):
+    """
+    Привязывает Telegram-топик к доске Nextcloud.
+    Нужно для отправки логов в правильную тему.
+    """
     chat_id = message.chat.id
     if message.chat.type != 'supergroup':
         send_message_limited(chat_id, "Эта команда работает только в группах с топиками.")
@@ -120,6 +114,9 @@ def set_board_topic_handler(message):
 
 @bot.message_handler(func=lambda msg: bool(getattr(msg, "text", "")) and not msg.text.startswith('/'))
 def save_login(message):
+    """
+    Сохраняет логин Nextcloud, отправленный пользователем в личные сообщения.
+    """
     if message.chat.type != "private":
         return
     logger.info(f"Свободный текст в ЛС (сохранение логина) от user_id={message.from_user.id} ({message.from_user.username}):\n{message.text}")
