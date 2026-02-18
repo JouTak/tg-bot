@@ -5,6 +5,8 @@ from typing import Tuple, Optional, Any
 
 import requests
 import socket, http.client
+
+from django.views.decorators.http import last_modified
 from requests.exceptions import RequestException, ConnectionError, Timeout
 from requests.auth import HTTPBasicAuth
 
@@ -259,6 +261,7 @@ def fetch_all_tasks():
                     done_raw = card.get('done')
                     done = _parse_done_utc_naive(done_raw, card_id=card.get('id'))
                     etag = card.get('ETag') or card.get('Etag') or card.get('etag')
+                    lastModified = (datetime.now() - datetime.fromtimestamp(card['lastModified'])).total_seconds()
 
                     result.append({
                         'card_id': card['id'], 'title': card['title'], 'description': card.get('description', ''),
@@ -269,7 +272,7 @@ def fetch_all_tasks():
                         'duedate': duedate_dt, 'done': done,
                         'assigned_logins': assigned_logins,
                         'comments_count': comments_count, 'attachments_count': attachments_count,
-                        'etag': etag
+                        'etag': etag, 'lastModified': lastModified
                     })
 
         return result

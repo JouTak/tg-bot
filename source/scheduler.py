@@ -59,10 +59,10 @@ def change_description(old_description, new_description):
         if change_text != '':
             if change_text[-1] == '\n': change_text = change_text[:-1]
     else:
-        old_desc = re.split(r'(?<=[.!?])\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}', old_description.strip())
+        old_desc = re.split(r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}', old_description.strip())
         old_desc = [s.strip() for s in old_desc if s.strip()]
 
-        new_desc = re.split(r'(?<=[.!?])\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}', new_description.strip())
+        new_desc = re.split(r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}', new_description.strip())
         new_desc = [s.strip() for s in new_desc if s.strip()]
 
         diff = difflib.ndiff(old_desc, new_desc)
@@ -121,6 +121,9 @@ def poll_new_tasks():
                 etag_same = bool(saved and (etag_new is not None) and (etag_old == etag_new))
 
                 need_mig_update = bool(saved and (saved.get('prev_stack_id') is None) and (saved.get('next_stack_id') is None))
+                if int(item['lastModified']) < 180:
+                    continue
+
                 if not saved:
                     changes_flag = True
                     save_task_to_db(
