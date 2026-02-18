@@ -3,6 +3,7 @@ import re
 import difflib
 import traceback
 from datetime import timezone, timedelta
+from collections import Counter
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from source.config import POLL_INTERVAL
@@ -14,7 +15,7 @@ from source.db.repos.tasks import (
     get_task_assignees, save_task_assignee,
     get_task_stats_map, upsert_task_stats
 )
-from source.app_logging import logger
+from source.app_logging import logger, is_debug
 from source.logging_service import send_log
 from source.links import card_url
 
@@ -30,13 +31,18 @@ def change_description(old_description, new_description):
     Возвращает текст различий для уведомления.
     """
     result_txt = ''; add_text = ''; remove_text = ''; change_text = ''
-    if ('[ ]' in new_description) or ('[x]' in new_description):
+    split_pattern = (
+        r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])' 
+        r'|[\s\n]{2,}'  
+        r'|[\r\n]+(?=\s*[-*+]\s+\[)'
+    )
+    '''if ('[ ]' in new_description) or ('[x]' in new_description): #изменить оно не работает возможно отказаться от идеи разоединять и просто переместить это в общий формат
         old_desc = old_description.split('\n')
         new_desc = new_description.split('\n')
         def find_changes(desc, description, sign, format):
             result = ''
             for point in range(len(desc)):
-                if desc[point][5:] not in description:
+                if desc[point][5:] not in description[point] and (('[ ]' or '[x]') in desc[point]):
                     if desc[point][:2] == '- ':
                         result += f'\\\\\\{format}{sign} ' + desc[point][2:] + f'{format}///\n'
                     else:
@@ -57,26 +63,49 @@ def change_description(old_description, new_description):
             except IndexError:
                 break
         if change_text != '':
-            if change_text[-1] == '\n': change_text = change_text[:-1]
-    else:
-        old_desc = re.split(r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}', old_description.strip())
+            if change_text[-1] == '\n': change_text = change_text[:-1]'''
+
+    if True:
+
+
+        old_desc = re.split(split_pattern, old_description.strip()) #r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}'
         old_desc = [s.strip() for s in old_desc if s.strip()]
 
-        new_desc = re.split(r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}', new_description.strip())
+        new_desc = re.split(split_pattern, new_description.strip()) #r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}'
         new_desc = [s.strip() for s in new_desc if s.strip()]
+        checkbox_pattern = re.compile(r'^\s*[-*+]\s+\[([ xX])\]\s+(.*)')
+        def is_checkbox(text):
+            return checkbox_pattern.match(text) is not None
 
-        diff = difflib.ndiff(old_desc, new_desc)
+        diff = list(difflib.ndiff(old_desc, new_desc))
+        count_checkbox = Counter()
+
+        for checkbox in diff:
+            text = checkbox[2:]
+            if is_checkbox(text):
+                count_checkbox[text[6:]] += 1
+
         for d in diff:
             if d[2:].lstrip() == '':
                 continue
             if d.startswith("+ "):
-                add_text += "\\\\\\*" + d[2:].lstrip() + '*///\n'
+                if is_checkbox(d[2:]) and count_checkbox[d[8:]] >= 2:
+                    add_text += "\\\\\\_& " + d[4:].lstrip() + '_///\n'
+                elif is_checkbox(d[2:]):
+                    add_text += "\\\\\\*+ " + d[4:].lstrip() + '*///\n'
+                else:
+                    add_text += "\\\\\\*" + d[2:].lstrip() + '*///\n'
             elif d.startswith("- "):
-                remove_text += "\\\\\\~" + d[2:].lstrip() + '~///\n'
+                if is_checkbox(d[2:]) and count_checkbox[d[8:]] == 1:
+                    remove_text += "\\\\\\~- " + d[4:].lstrip() + '~///\n'
+                elif not(is_checkbox(d[2:])):
+                    remove_text += "\\\\\\~" + d[2:].lstrip() + '~///\n'
+
         if len(add_text) > 0:
             if add_text[-1] == '\n': add_text = add_text[:-1]
         if len(remove_text) > 0:
             if remove_text[-1] == '\n': remove_text = remove_text[:-1]
+
     if len(add_text) > 0:
         result_txt += f"{add_text}\n"
     if len(remove_text) > 0:
@@ -121,7 +150,13 @@ def poll_new_tasks():
                 etag_same = bool(saved and (etag_new is not None) and (etag_old == etag_new))
 
                 need_mig_update = bool(saved and (saved.get('prev_stack_id') is None) and (saved.get('next_stack_id') is None))
-                if item['lastModified'] < 180:
+
+                if is_debug():
+                    need_cooldown = False
+                else:
+                    need_cooldown = item['lastModified'] < POLL_INTERVAL
+
+                if need_cooldown:
                     continue
 
                 if not saved:
@@ -151,8 +186,7 @@ def poll_new_tasks():
                         changes.append(f"Заголовок: `{saved['title']}` → `{item['title']}`")
                     if saved['description'] != item['description']:
                         text = change_description(saved['description'], item['description'])
-                        if text != '':
-                            changes.append(f"Описание изменилось: \n{text}")
+                        changes.append(f"Описание изменилось: \n{text}")
 
                     if changes or (etag_old is None) or (etag_new is None) or need_mig_update:
                         changes_flag = True
