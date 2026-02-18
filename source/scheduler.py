@@ -36,70 +36,38 @@ def change_description(old_description, new_description):
         r'|[\s\n]{2,}'  
         r'|[\r\n]+(?=\s*[-*+]\s+\[)'
     )
-    '''if ('[ ]' in new_description) or ('[x]' in new_description): #изменить оно не работает возможно отказаться от идеи разоединять и просто переместить это в общий формат
-        old_desc = old_description.split('\n')
-        new_desc = new_description.split('\n')
-        def find_changes(desc, description, sign, format):
-            result = ''
-            for point in range(len(desc)):
-                if desc[point][5:] not in description[point] and (('[ ]' or '[x]') in desc[point]):
-                    if desc[point][:2] == '- ':
-                        result += f'\\\\\\{format}{sign} ' + desc[point][2:] + f'{format}///\n'
-                    else:
-                        result += f'\\\\\\{format}{sign} ' + desc[point] + f'{format}///\n'
-                    desc[point] = ''
-            if result != '':
-                if result[-1] == '\n': result = result[:-1]
-            return result
+    old_desc = re.split(split_pattern, old_description.strip()) #r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}'
+    old_desc = [s.strip() for s in old_desc if s.strip()]
 
-        remove_text = find_changes(old_desc, new_description, '-', '~')
-        add_text = find_changes(new_desc, old_description, '+', '*')
-        point = 0
-        while point != max(len(old_desc), len(new_desc)):
-            try:
-                if old_desc[point][3] != new_desc[point][3]:
-                    change_text += '\\\\\\_& ' + new_desc[point][2:] + '_///\n'
-                point += 1
-            except IndexError:
-                break
-        if change_text != '':
-            if change_text[-1] == '\n': change_text = change_text[:-1]'''
+    new_desc = re.split(split_pattern, new_description.strip()) #r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}'
+    new_desc = [s.strip() for s in new_desc if s.strip()]
+    checkbox_pattern = re.compile(r'^\s*[-*+]\s+\[([ xX])\]\s+(.*)')
+    def is_checkbox(text):
+        return checkbox_pattern.match(text) is not None
 
-    if True:
+    diff = list(difflib.ndiff(old_desc, new_desc))
+    count_checkbox = Counter()
 
+    for checkbox in diff:
+        text = checkbox[2:]
+        if is_checkbox(text):
+            count_checkbox[text[6:]] += 1
 
-        old_desc = re.split(split_pattern, old_description.strip()) #r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}'
-        old_desc = [s.strip() for s in old_desc if s.strip()]
-
-        new_desc = re.split(split_pattern, new_description.strip()) #r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}'
-        new_desc = [s.strip() for s in new_desc if s.strip()]
-        checkbox_pattern = re.compile(r'^\s*[-*+]\s+\[([ xX])\]\s+(.*)')
-        def is_checkbox(text):
-            return checkbox_pattern.match(text) is not None
-
-        diff = list(difflib.ndiff(old_desc, new_desc))
-        count_checkbox = Counter()
-
-        for checkbox in diff:
-            text = checkbox[2:]
-            if is_checkbox(text):
-                count_checkbox[text[6:]] += 1
-
-        for d in diff:
-            if d[2:].lstrip() == '':
-                continue
-            if d.startswith("+ "):
-                if is_checkbox(d[2:]) and count_checkbox[d[8:]] >= 2:
-                    add_text += "\\\\\\_& " + d[4:].lstrip() + '_///\n'
-                elif is_checkbox(d[2:]):
-                    add_text += "\\\\\\*+ " + d[4:].lstrip() + '*///\n'
-                else:
-                    add_text += "\\\\\\*" + d[2:].lstrip() + '*///\n'
-            elif d.startswith("- "):
-                if is_checkbox(d[2:]) and count_checkbox[d[8:]] == 1:
-                    remove_text += "\\\\\\~- " + d[4:].lstrip() + '~///\n'
-                elif not(is_checkbox(d[2:])):
-                    remove_text += "\\\\\\~" + d[2:].lstrip() + '~///\n'
+    for d in diff:
+        if d[2:].lstrip() == '':
+            continue
+        if d.startswith("+ "):
+            if is_checkbox(d[2:]) and count_checkbox[d[8:]] >= 2:
+                add_text += "\\\\\\_& " + d[4:].lstrip() + '_///\n'
+            elif is_checkbox(d[2:]):
+                add_text += "\\\\\\*+ " + d[4:].lstrip() + '*///\n'
+            else:
+                add_text += "\\\\\\*" + d[2:].lstrip() + '*///\n'
+        elif d.startswith("- "):
+            if is_checkbox(d[2:]) and count_checkbox[d[8:]] == 1:
+                remove_text += "\\\\\\~- " + d[4:].lstrip() + '~///\n'
+            elif not(is_checkbox(d[2:])):
+                remove_text += "\\\\\\~" + d[2:].lstrip() + '~///\n'
 
         if len(add_text) > 0:
             if add_text[-1] == '\n': add_text = add_text[:-1]
