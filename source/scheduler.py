@@ -121,7 +121,7 @@ def poll_new_tasks():
                 etag_same = bool(saved and (etag_new is not None) and (etag_old == etag_new))
 
                 need_mig_update = bool(saved and (saved.get('prev_stack_id') is None) and (saved.get('next_stack_id') is None))
-                if int(item['lastModified']) < 180:
+                if item['lastModified'] < 180:
                     continue
 
                 if not saved:

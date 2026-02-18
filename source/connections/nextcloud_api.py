@@ -272,7 +272,7 @@ def fetch_all_tasks():
                         'duedate': duedate_dt, 'done': done,
                         'assigned_logins': assigned_logins,
                         'comments_count': comments_count, 'attachments_count': attachments_count,
-                        'etag': etag, 'lastModified': lastModified
+                        'etag': etag, 'lastModified': int(lastModified)
                     })
 
         return result
