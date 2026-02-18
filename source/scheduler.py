@@ -151,7 +151,8 @@ def poll_new_tasks():
                         changes.append(f"Заголовок: `{saved['title']}` → `{item['title']}`")
                     if saved['description'] != item['description']:
                         text = change_description(saved['description'], item['description'])
-                        changes.append(f"Описание изменилось: \n{text}")
+                        if text != '':
+                            changes.append(f"Описание изменилось: \n{text}")
 
                     if changes or (etag_old is None) or (etag_new is None) or need_mig_update:
                         changes_flag = True
