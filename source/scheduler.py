@@ -8,7 +8,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from source.config import POLL_INTERVAL
 from source.connections.sender import send_message_limited
-from source.connections.nextcloud_api import fetch_all_tasks
+from source.connections.nextcloud_api import fetch_all_tasks, in_done_stack
 from source.db.repos.users import get_user_map
 from source.db.repos.tasks import (
     get_saved_tasks, save_task_to_db, update_task_in_db,
@@ -143,6 +143,11 @@ def poll_new_tasks():
                         "attachments_count": new_attachments
                     }
                 elif not etag_same:
+                    if item['done'] and item['next_stack_id'] is not None:
+                        info = in_done_stack(item)
+                        if info is not None:
+                            item['stack_title'], item['stack_id'] = info
+                            item['prev_stack_id'], item['next_stack_id'], item['prev_stack_title'], item['next_stack_title'] = None, None, None, None
                     if saved['stack_id'] != item['stack_id']:
                         changes.append(f"Колонка: *{saved['stack_title']}* → *{item['stack_title']}*")
                     UTC = timezone.utc

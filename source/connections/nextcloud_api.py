@@ -6,12 +6,40 @@ from typing import Tuple, Optional, Any
 import requests
 import socket, http.client
 
-from django.views.decorators.http import last_modified
 from requests.exceptions import RequestException, ConnectionError, Timeout
 from requests.auth import HTTPBasicAuth
 
 from source.app_logging import logger
 from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, POLL_INTERVAL
+
+
+def in_done_stack(card: dict):
+    board_id = card['board_id']
+    card_id = card['card_id']
+    stack_id = card['stack_id']
+    all_stacks_resp = requests.get(f"{BASE_URL}/boards/{board_id}/stacks?details=true", headers=HEADERS,
+                                   auth=HTTPBasicAuth(USERNAME, PASSWORD))
+    all_stacks_resp.raise_for_status()
+    data = all_stacks_resp.json()
+    if not data:
+        return None
+
+    now_stack = next((s['order'] for s in data if s['id'] == stack_id), None)
+    if now_stack == 0 or now_stack is None:
+        return None
+
+    done_stack = max(data, key=lambda s: (s['order'], s['id'] if s['order'] == 999 else 0))
+    if done_stack['order'] == now_stack:
+        return None
+
+    new_stack_id = done_stack['id']
+    position = len(done_stack.get("cards", []))
+    reorder_url = f"{BASE_URL}/boards/{board_id}/stacks/{new_stack_id}/cards/{card_id}/reorder"
+    payload = {"stackId": new_stack_id, "order": position}
+    move_resp = requests.put(reorder_url, headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), json=payload)
+    if move_resp.status_code not in (200, 204):
+        return None
+    return [done_stack['title'], new_stack_id]
 
 
 def _extract_counts(card: dict) -> Tuple[int, int]:
