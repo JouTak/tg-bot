@@ -33,7 +33,7 @@ def in_done_stack(card: dict):
         return None
 
     new_stack_id = done_stack['id']
-    position = len(done_stack.get("cards", []))
+    position = 0
     reorder_url = f"{BASE_URL}/boards/{board_id}/stacks/{new_stack_id}/cards/{card_id}/reorder"
     payload = {"stackId": new_stack_id, "order": position}
     move_resp = requests.put(reorder_url, headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), json=payload)
