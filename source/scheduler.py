@@ -3,18 +3,19 @@ import re
 import difflib
 import traceback
 from datetime import timezone, timedelta
+from collections import Counter
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from source.config import POLL_INTERVAL
 from source.connections.sender import send_message_limited
-from source.connections.nextcloud_api import fetch_all_tasks
+from source.connections.nextcloud_api import fetch_all_tasks, in_done_stack
 from source.db.repos.users import get_user_map
 from source.db.repos.tasks import (
     get_saved_tasks, save_task_to_db, update_task_in_db,
     get_task_assignees, save_task_assignee,
     get_task_stats_map, upsert_task_stats
 )
-from source.app_logging import logger
+from source.app_logging import logger, is_debug
 from source.logging_service import send_log
 from source.links import card_url
 
@@ -30,53 +31,49 @@ def change_description(old_description, new_description):
     Возвращает текст различий для уведомления.
     """
     result_txt = ''; add_text = ''; remove_text = ''; change_text = ''
-    if ('[ ]' in new_description) or ('[x]' in new_description):
-        old_desc = old_description.split('\n')
-        new_desc = new_description.split('\n')
-        def find_changes(desc, description, sign, format):
-            result = ''
-            for point in range(len(desc)):
-                if desc[point][5:] not in description:
-                    if desc[point][:2] == '- ':
-                        result += f'\\\\\\{format}{sign} ' + desc[point][2:] + f'{format}///\n'
-                    else:
-                        result += f'\\\\\\{format}{sign} ' + desc[point] + f'{format}///\n'
-                    desc[point] = ''
-            if result != '':
-                if result[-1] == '\n': result = result[:-1]
-            return result
+    split_pattern = (
+        r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])' 
+        r'|[\s\n]{2,}'  
+        r'|[\r\n]+(?=\s*[-*+]\s+\[)'
+    )
+    old_desc = re.split(split_pattern, old_description.strip()) #r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}'
+    old_desc = [s.strip() for s in old_desc if s.strip()]
 
-        remove_text = find_changes(old_desc, new_description, '-', '~')
-        add_text = find_changes(new_desc, old_description, '+', '*')
-        point = 0
-        while point != max(len(old_desc), len(new_desc)):
-            try:
-                if old_desc[point][3] != new_desc[point][3]:
-                    change_text += '\\\\\\_& ' + new_desc[point][2:] + '_///\n'
-                point += 1
-            except IndexError:
-                break
-        if change_text != '':
-            if change_text[-1] == '\n': change_text = change_text[:-1]
-    else:
-        old_desc = re.split(r'(?<=[.!?])\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}', old_description.strip())
-        old_desc = [s.strip() for s in old_desc if s.strip()]
+    new_desc = re.split(split_pattern, new_description.strip()) #r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}'
+    new_desc = [s.strip() for s in new_desc if s.strip()]
+    checkbox_pattern = re.compile(r'^\s*[-*+]\s+\[([ xX])\]\s+(.*)')
+    def is_checkbox(text):
+        return checkbox_pattern.match(text) is not None
 
-        new_desc = re.split(r'(?<=[.!?])\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}', new_description.strip())
-        new_desc = [s.strip() for s in new_desc if s.strip()]
+    diff = list(difflib.ndiff(old_desc, new_desc))
+    count_checkbox = Counter()
 
-        diff = difflib.ndiff(old_desc, new_desc)
-        for d in diff:
-            if d[2:].lstrip() == '':
-                continue
-            if d.startswith("+ "):
+    for checkbox in diff:
+        text = checkbox[2:]
+        if is_checkbox(text):
+            count_checkbox[text[6:]] += 1
+
+    for d in diff:
+        if d[2:].lstrip() == '':
+            continue
+        if d.startswith("+ "):
+            if is_checkbox(d[2:]) and count_checkbox[d[8:]] >= 2:
+                add_text += "\\\\\\_& " + d[4:].lstrip() + '_///\n'
+            elif is_checkbox(d[2:]):
+                add_text += "\\\\\\*+ " + d[4:].lstrip() + '*///\n'
+            else:
                 add_text += "\\\\\\*" + d[2:].lstrip() + '*///\n'
-            elif d.startswith("- "):
+        elif d.startswith("- "):
+            if is_checkbox(d[2:]) and count_checkbox[d[8:]] == 1:
+                remove_text += "\\\\\\~- " + d[4:].lstrip() + '~///\n'
+            elif not(is_checkbox(d[2:])):
                 remove_text += "\\\\\\~" + d[2:].lstrip() + '~///\n'
+
         if len(add_text) > 0:
             if add_text[-1] == '\n': add_text = add_text[:-1]
         if len(remove_text) > 0:
             if remove_text[-1] == '\n': remove_text = remove_text[:-1]
+
     if len(add_text) > 0:
         result_txt += f"{add_text}\n"
     if len(remove_text) > 0:
@@ -121,6 +118,15 @@ def poll_new_tasks():
                 etag_same = bool(saved and (etag_new is not None) and (etag_old == etag_new))
 
                 need_mig_update = bool(saved and (saved.get('prev_stack_id') is None) and (saved.get('next_stack_id') is None))
+
+                if is_debug():
+                    need_cooldown = False
+                else:
+                    need_cooldown = item['lastModified'] < POLL_INTERVAL
+
+                if need_cooldown:
+                    continue
+
                 if not saved:
                     changes_flag = True
                     save_task_to_db(
@@ -137,6 +143,11 @@ def poll_new_tasks():
                         "attachments_count": new_attachments
                     }
                 elif not etag_same:
+                    if item['done'] and item['next_stack_id'] is not None:
+                        info = in_done_stack(item)
+                        if info is not None:
+                            item['stack_title'], item['stack_id'] = info
+                            item['prev_stack_id'], item['next_stack_id'], item['prev_stack_title'], item['next_stack_title'] = None, None, None, None
                     if saved['stack_id'] != item['stack_id']:
                         changes.append(f"Колонка: *{saved['stack_title']}* → *{item['stack_title']}*")
                     UTC = timezone.utc
