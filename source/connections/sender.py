@@ -59,11 +59,9 @@ def _auto_html(text: str | None) -> str:
         return ""
     raw = str(text)
     anchors = []
-
     def _stash(m):
         anchors.append(m.group(0))
         return f"__ANCHOR_{len(anchors) - 1}__"
-
     stashed = _a_tag_pat.sub(_stash, raw)
 
     s = html.escape(stashed, quote=False)
@@ -76,7 +74,6 @@ def _auto_html(text: str | None) -> str:
         s = s.replace(f"__ANCHOR_{i}__", tag)
     s = _italic_pat.sub(lambda m: f"<i>{m.group(1)}</i>", s)
     return s
-
 
 def send_message_limited(chat_id: int, text: str, **kwargs):
     _global.wait()
