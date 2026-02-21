@@ -31,53 +31,43 @@ def change_description(old_description, new_description):
 
     Возвращает текст различий для уведомления.
     """
-    result_txt = '';
-    add_text = '';
-    remove_text = '';
-    change_text = ''
-    if ('[ ]' in new_description) or ('[x]' in new_description):
-        old_desc = old_description.split('\n')
-        new_desc = new_description.split('\n')
+    result_txt = ''; add_text = ''; remove_text = ''; change_text = ''
+    split_pattern = (
+        r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])' 
+        r'|[\s\n]{2,}'  
+        r'|[\r\n]+(?=\s*[-*+]\s+\[)'
+    )
+    old_desc = re.split(split_pattern, old_description.strip())
+    old_desc = [s.strip() for s in old_desc if s.strip()]
 
-        def find_changes(desc, description, sign, format):
-            result = ''
-            for point in range(len(desc)):
-                if desc[point][5:] not in description:
-                    if desc[point][:2] == '- ':
-                        result += f'\\\\\\{format}{sign} ' + desc[point][2:] + f'{format}///\n'
-                    else:
-                        result += f'\\\\\\{format}{sign} ' + desc[point] + f'{format}///\n'
-                    desc[point] = ''
-            if result != '':
-                if result[-1] == '\n': result = result[:-1]
-            return result
+    new_desc = re.split(split_pattern, new_description.strip())
+    new_desc = [s.strip() for s in new_desc if s.strip()]
+    checkbox_pattern = re.compile(r'^\s*[-*+]\s+\[([ xX])\]\s+(.*)')
+    def is_checkbox(text):
+        return checkbox_pattern.match(text) is not None
 
-        remove_text = find_changes(old_desc, new_description, '-', '~')
-        add_text = find_changes(new_desc, old_description, '+', '*')
-        point = 0
-        while point != max(len(old_desc), len(new_desc)):
-            try:
-                if old_desc[point][3] != new_desc[point][3]:
-                    change_text += '\\\\\\_& ' + new_desc[point][2:] + '_///\n'
-                point += 1
-            except IndexError:
-                break
-        if change_text != '':
-            if change_text[-1] == '\n': change_text = change_text[:-1]
-    else:
-        old_desc = re.split(r'(?<=[.!?])\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}', old_description.strip())
-        old_desc = [s.strip() for s in old_desc if s.strip()]
+    diff = list(difflib.ndiff(old_desc, new_desc))
+    count_checkbox = Counter()
 
-        new_desc = re.split(r'(?<=[.!?])\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}', new_description.strip())
-        new_desc = [s.strip() for s in new_desc if s.strip()]
+    for checkbox in diff:
+        text = checkbox[2:]
+        if is_checkbox(text):
+            count_checkbox[text[6:]] += 1
 
-        diff = difflib.ndiff(old_desc, new_desc)
-        for d in diff:
-            if d[2:].lstrip() == '':
-                continue
-            if d.startswith("+ "):
+    for d in diff:
+        if d[2:].lstrip() == '':
+            continue
+        if d.startswith("+ "):
+            if is_checkbox(d[2:]) and count_checkbox[d[8:]] >= 2:
+                add_text += "\\\\\\_& " + d[4:].lstrip() + '_///\n'
+            elif is_checkbox(d[2:]):
+                add_text += "\\\\\\*+ " + d[4:].lstrip() + '*///\n'
+            else:
                 add_text += "\\\\\\*" + d[2:].lstrip() + '*///\n'
-            elif d.startswith("- "):
+        elif d.startswith("- "):
+            if is_checkbox(d[2:]) and count_checkbox[d[8:]] == 1:
+                remove_text += "\\\\\\~- " + d[4:].lstrip() + '~///\n'
+            elif not(is_checkbox(d[2:])):
                 remove_text += "\\\\\\~" + d[2:].lstrip() + '~///\n'
 
         if len(add_text) > 0:
@@ -118,8 +108,7 @@ def poll_new_tasks():
 
             for item in all_cards:
                 changes = []
-                card_id = item.get('card_id');
-                board_id = item.get('board_id')
+                card_id = item.get('card_id'); board_id = item.get('board_id')
                 cid_link = f'<a href="{card_url(item.get("board_id"), card_id)}">{card_id}</a>'
 
                 new_comments = int(item.get('comments_count', 0))
@@ -131,8 +120,16 @@ def poll_new_tasks():
                 etag_old = saved.get('etag') if saved else None
                 etag_same = bool(saved and (etag_new is not None) and (etag_old == etag_new))
 
-                need_mig_update = bool(
-                    saved and (saved.get('prev_stack_id') is None) and (saved.get('next_stack_id') is None))
+                need_mig_update = bool(saved and (saved.get('prev_stack_id') is None) and (saved.get('next_stack_id') is None))
+
+                if is_debug():
+                    need_cooldown = False
+                else:
+                    need_cooldown = item['lastModified'] < POLL_INTERVAL
+
+                if need_cooldown:
+                    continue
+
                 if not saved:
                     changes_flag = True
                     save_task_to_db(
@@ -149,13 +146,16 @@ def poll_new_tasks():
                         "attachments_count": new_attachments
                     }
                 elif not etag_same:
+                    if item['done'] and item['next_stack_id'] is not None:
+                        info = in_done_stack(item)
+                        if info is not None:
+                            item['stack_title'], item['stack_id'] = info
+                            item['prev_stack_id'], item['next_stack_id'], item['prev_stack_title'], item['next_stack_title'] = None, None, None, None
                     if saved['stack_id'] != item['stack_id']:
                         changes.append(f"Колонка: *{saved['stack_title']}* → *{item['stack_title']}*")
                     UTC = timezone.utc
-                    od = saved['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if saved[
-                        'duedate'] else None
-                    nd = item['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if item[
-                        'duedate'] else None
+                    od = saved['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if saved['duedate'] else None
+                    nd = item['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if item['duedate'] else None
                     if od != nd:
                         changes.append(f"Due: `{od or '—'}` → `{nd or '—'}`")
                     if saved['title'] != item['title']:
@@ -184,14 +184,14 @@ def poll_new_tasks():
                     if inc_comments > 0:
                         send_log(
                             "💬 Новые комментарии:" + "\n"
-                                                      f"{inc_comments} в «{item['title']}»",
+                            f"{inc_comments} в «{item['title']}»",
                             board_id=item['board_id'],
                             reply_markup=kb,
                         )
                     elif inc_comments < 0:
                         send_log(
-                            "🗑 Удалены комментарии: " + "\n"
-                                                         f"{-inc_comments} в «{item['title']}»",
+                            "🗑 Удалены комментарии: "+"\n"
+                            f"{-inc_comments} в «{item['title']}»",
                             board_id=item['board_id'],
                             reply_markup=kb,
                         )
@@ -199,14 +199,14 @@ def poll_new_tasks():
                     if inc_attachments > 0:
                         send_log(
                             "📎 Новые вложения:" + "\n"
-                                                   f"{inc_attachments} в «{item['title']}»",
+                            f"{inc_attachments} в «{item['title']}»",
                             board_id=item['board_id'],
                             reply_markup=kb,
                         )
                     elif inc_attachments < 0:
                         send_log(
-                            "🗑 Удалены вложения: " + "\n"
-                                                      f" {-inc_attachments} в «{item['title']}»",
+                            "🗑 Удалены вложения: "+"\n"
+                            f" {-inc_attachments} в «{item['title']}»",
                             board_id=item['board_id'],
                             reply_markup=kb,
                         )
