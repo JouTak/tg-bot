@@ -18,7 +18,8 @@ def save_task_to_db(card_id, title, description, board_id, board_title, stack_id
     cursor.execute(
         """
         INSERT INTO tasks
-          (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate, etag, prev_stack_id, prev_stack_title, next_stack_id, next_stack_title, done)
+          (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate,
+          etag, prev_stack_id, prev_stack_title, next_stack_id, next_stack_title, done)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE
           title=VALUES(title),
@@ -106,8 +107,7 @@ def get_tasks_from_users(login):
                     JOIN task_assignees ON tasks.card_id = task_assignees.card_id 
                     WHERE nc_login = %s 
                     GROUP BY card_id
-                    """,
-                   (login,))
+                    """, (login,))
     tasks = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -161,6 +161,52 @@ def upsert_task_stats(card_id: int, comments_count: int, attachments_count: int)
         """,
         (card_id, comments_count, attachments_count)
     )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def is_card_excluded(card_id: int) -> bool:
+    """
+    Проверяет, исключена ли карточка из обработки.
+    Сначала проверяет ENV, затем БД.
+    """
+    from source.config import EXCLUDED_CARD_IDS
+    if card_id in EXCLUDED_CARD_IDS:
+        return True
+
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM excluded_cards WHERE card_id = %s", (card_id,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return row is not None
+
+
+def add_excluded_card(card_id: int, reason: str = None):
+    """
+    Добавляет карточку в список исключённых.
+    """
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO excluded_cards (card_id, reason) VALUES (%s, %s) "
+        "ON DUPLICATE KEY UPDATE reason = VALUES(reason)",
+        (card_id, reason)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def remove_excluded_card(card_id: int):
+    """
+    Убирает карточку из списка исключённых.
+    """
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM excluded_cards WHERE card_id = %s", (card_id,))
     conn.commit()
     cursor.close()
     conn.close()

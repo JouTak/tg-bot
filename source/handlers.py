@@ -17,12 +17,15 @@ def start_handler(message):
     """
     chat_id = message.chat.id
     if message.chat.type != "private":
-        send_message_limited(chat_id, "Эта команда может использоваться только в лс с ботом", message_thread_id=message.message_thread_id)
+        send_message_limited(chat_id, "Эта команда может использоваться только в лс с ботом",
+                             message_thread_id=message.message_thread_id)
         return
-    if get_login_by_tg_id(message.chat.id)==None:
+    if get_login_by_tg_id(message.chat.id) == None:
         send_message_limited(chat_id, "Введите свой логин cloud.joutak.ru:")
     else:
-        send_message_limited(chat_id, "Ваш логин уже имеется в базе данных. Если его необходимо сменить - обратитесь к администратору.")
+        send_message_limited(chat_id, "Ваш логин уже имеется в базе данных. "
+                                      "Если его необходимо сменить - обратитесь к администратору.")
+
 
 @bot.message_handler(commands=['mycards'])
 def show_user_cards(message):
@@ -34,7 +37,8 @@ def show_user_cards(message):
     logger.info("Поступила команда /mycards")
     chat_id = message.chat.id
     if message.chat.type != "private":
-        send_message_limited(chat_id, "Эта команда может использоваться только в лс с ботом", message_thread_id=message.message_thread_id)
+        send_message_limited(chat_id, "Эта команда может использоваться только в лс с ботом",
+                             message_thread_id=message.message_thread_id)
         return
     saved_login = get_login_by_tg_id(chat_id)
     if not saved_login:
@@ -68,6 +72,7 @@ def show_user_cards(message):
         )
         send_message_limited(chat_id, msg, reply_markup=kb)
 
+
 @bot.message_handler(commands=['whereami'])
 def whereami(m):
     """
@@ -81,6 +86,7 @@ def whereami(m):
         f"Это тема с message_thread_id = {m.message_thread_id}",
         message_thread_id=m.message_thread_id
     )
+
 
 @bot.message_handler(commands=['setboardtopic'])
 def set_board_topic_handler(message):
@@ -98,7 +104,8 @@ def set_board_topic_handler(message):
         return
     parts = message.text.strip().split()
     if len(parts) < 2:
-        send_message_limited(chat_id, "Используйте: /setboardtopic <номер_доски>", message_thread_id=message.message_thread_id)
+        send_message_limited(chat_id, "Используйте: /setboardtopic <номер_доски>",
+                             message_thread_id=message.message_thread_id)
         return
     try:
         board_id = int(parts[1])
@@ -110,7 +117,9 @@ def set_board_topic_handler(message):
         send_message_limited(chat_id, "Номер доски не найден.", message_thread_id=message.message_thread_id)
         return
     save_board_topic(board_id, thread_id)
-    send_message_limited(chat_id, f"Этот топик (ID {thread_id}) привязан к доске {board_title} (ID: {board_id})", message_thread_id=message.message_thread_id)
+    send_message_limited(chat_id, f"Этот топик (ID {thread_id}) привязан к доске {board_title} (ID: {board_id})",
+                         message_thread_id=message.message_thread_id)
+
 
 @bot.message_handler(func=lambda msg: bool(getattr(msg, "text", "")) and not msg.text.startswith('/'))
 def save_login(message):
@@ -119,7 +128,10 @@ def save_login(message):
     """
     if message.chat.type != "private":
         return
-    logger.info(f"Свободный текст в ЛС (сохранение логина) от user_id={message.from_user.id} ({message.from_user.username}):\n{message.text}")
+    logger.info(
+        f"Свободный текст в ЛС (сохранение логина) от user_id={message.from_user.id} ({message.from_user.username}):\n"
+        f"{message.text}"
+    )
     if get_login_by_tg_id(message.chat.id) is not None:
         return
     chat_id = message.chat.id

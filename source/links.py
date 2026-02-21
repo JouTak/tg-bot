@@ -1,6 +1,7 @@
 from urllib.parse import urlsplit, urlunsplit
 from source.config import BASE_URL
 
+
 def _deployment_root() -> str:
     """
     Из BASE_URL (обычно .../index.php/apps/deck/api/v1.0) получаем корень развертывания:
@@ -18,6 +19,7 @@ def _deployment_root() -> str:
 
     base_path = path[:cut_at].rstrip("/")
     return urlunsplit((parts.scheme, parts.netloc, base_path, "", ""))
+
 
 def card_url(board_id: int | str, card_id: int | str) -> str:
     """

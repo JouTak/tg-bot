@@ -8,6 +8,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from source.config import POLL_INTERVAL
 from source.connections.sender import send_message_limited
 from source.connections.nextcloud_api import fetch_all_tasks
+from source.db.repos.tasks import is_card_excluded
 from source.db.repos.users import get_user_map
 from source.db.repos.tasks import (
     get_saved_tasks, save_task_to_db, update_task_in_db,
@@ -29,10 +30,14 @@ def change_description(old_description, new_description):
 
     Возвращает текст различий для уведомления.
     """
-    result_txt = ''; add_text = ''; remove_text = ''; change_text = ''
+    result_txt = '';
+    add_text = '';
+    remove_text = '';
+    change_text = ''
     if ('[ ]' in new_description) or ('[x]' in new_description):
         old_desc = old_description.split('\n')
         new_desc = new_description.split('\n')
+
         def find_changes(desc, description, sign, format):
             result = ''
             for point in range(len(desc)):
@@ -106,9 +111,12 @@ def poll_new_tasks():
             saved_tasks = get_saved_tasks()
             stats_map = get_task_stats_map()
 
+            all_cards = [c for c in all_cards if not is_card_excluded(c.get('card_id'))]
+
             for item in all_cards:
                 changes = []
-                card_id = item.get('card_id'); board_id = item.get('board_id')
+                card_id = item.get('card_id');
+                board_id = item.get('board_id')
                 cid_link = f'<a href="{card_url(item.get("board_id"), card_id)}">{card_id}</a>'
 
                 new_comments = int(item.get('comments_count', 0))
@@ -120,7 +128,8 @@ def poll_new_tasks():
                 etag_old = saved.get('etag') if saved else None
                 etag_same = bool(saved and (etag_new is not None) and (etag_old == etag_new))
 
-                need_mig_update = bool(saved and (saved.get('prev_stack_id') is None) and (saved.get('next_stack_id') is None))
+                need_mig_update = bool(
+                    saved and (saved.get('prev_stack_id') is None) and (saved.get('next_stack_id') is None))
                 if not saved:
                     changes_flag = True
                     save_task_to_db(
@@ -140,8 +149,10 @@ def poll_new_tasks():
                     if saved['stack_id'] != item['stack_id']:
                         changes.append(f"Колонка: *{saved['stack_title']}* → *{item['stack_title']}*")
                     UTC = timezone.utc
-                    od = saved['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if saved['duedate'] else None
-                    nd = item['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if item['duedate'] else None
+                    od = saved['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if saved[
+                        'duedate'] else None
+                    nd = item['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if item[
+                        'duedate'] else None
                     if od != nd:
                         changes.append(f"Due: `{od or '—'}` → `{nd or '—'}`")
                     if saved['title'] != item['title']:
@@ -170,14 +181,14 @@ def poll_new_tasks():
                     if inc_comments > 0:
                         send_log(
                             "💬 Новые комментарии:" + "\n"
-                            f"{inc_comments} в «{item['title']}»",
+                                                      f"{inc_comments} в «{item['title']}»",
                             board_id=item['board_id'],
                             reply_markup=kb,
                         )
                     elif inc_comments < 0:
                         send_log(
-                            "🗑 Удалены комментарии: "+"\n"
-                            f"{-inc_comments} в «{item['title']}»",
+                            "🗑 Удалены комментарии: " + "\n"
+                                                         f"{-inc_comments} в «{item['title']}»",
                             board_id=item['board_id'],
                             reply_markup=kb,
                         )
@@ -185,14 +196,14 @@ def poll_new_tasks():
                     if inc_attachments > 0:
                         send_log(
                             "📎 Новые вложения:" + "\n"
-                            f"{inc_attachments} в «{item['title']}»",
+                                                   f"{inc_attachments} в «{item['title']}»",
                             board_id=item['board_id'],
                             reply_markup=kb,
                         )
                     elif inc_attachments < 0:
                         send_log(
-                            "🗑 Удалены вложения: "+"\n"
-                            f" {-inc_attachments} в «{item['title']}»",
+                            "🗑 Удалены вложения: " + "\n"
+                                                      f" {-inc_attachments} в «{item['title']}»",
                             board_id=item['board_id'],
                             reply_markup=kb,
                         )

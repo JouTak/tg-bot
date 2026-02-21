@@ -9,12 +9,12 @@ from source.app_logging import logger
 from source.connections.nextcloud_api import fetch_all_tasks
 from source.db.repos.users import get_user_map
 from source.db.repos.tasks import get_saved_tasks, get_saved_tasks_for_deadlines
+from source.db.repos.tasks import is_card_excluded
 from source.db.repos.deadlines import get_last_sent_map, mark_sent, reset_sent_for_card
 from source.connections.sender import send_message_limited
 from source.links import card_url
 
 from source.config import DEADLINES_INTERVAL, TIMEZONE, QUIET_HOURS, DEADLINE_REPEAT_DAYS
-
 
 DEADLINES_INTERVAL = int(DEADLINES_INTERVAL)
 
@@ -176,6 +176,7 @@ def poll_deadlines():
 
             t0 = time.time()
             cards = get_saved_tasks_for_deadlines()
+            cards = [c for c in cards if not is_card_excluded(c.get('card_id'))]
             fetch_sec = time.time() - t0
 
             for c in cards:
@@ -194,7 +195,9 @@ def poll_deadlines():
                     continue
                 with_due += 1
 
-                if (item.get("done") is not None) or ((item.get("done") is None) and (item.get("prev_stack_id") is None) and (item.get("next_stack_id") is None)):
+                if (item.get("done") is not None) or (
+                        (item.get("done") is None) and (item.get("prev_stack_id") is None) and (
+                        item.get("next_stack_id") is None)):
                     continue
 
                 assigned = set(item.get("assigned_logins") or [])
@@ -235,7 +238,8 @@ def poll_deadlines():
                         if last_stage != "post_repeat":
                             chosen_stage = "post_repeat"
                         else:
-                            if repeat_delta is not None and last_sent_utc is not None and (now_utc - last_sent_utc >= repeat_delta):
+                            if repeat_delta is not None and last_sent_utc is not None and (
+                                    now_utc - last_sent_utc >= repeat_delta):
                                 chosen_stage = "post_repeat"
                     else:
                         candidates = [
