@@ -5,13 +5,15 @@ from logging import FileHandler, StreamHandler, Formatter
 from source.config import APP_DEBUG
 
 logger = logging.getLogger("source")
-_APP_DEBUG = APP_DEBUG=="1"
+_APP_DEBUG = APP_DEBUG == "1"
+
 
 def is_debug() -> bool:
     """
     Возвращает True, если приложение запущено в режиме отладки (APP_DEBUG=1).
     """
     return _APP_DEBUG
+
 
 def setup_logging():
     """

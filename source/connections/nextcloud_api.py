@@ -5,11 +5,41 @@ from typing import Tuple, Optional, Any
 
 import requests
 import socket, http.client
+
 from requests.exceptions import RequestException, ConnectionError, Timeout
 from requests.auth import HTTPBasicAuth
 
 from source.app_logging import logger
 from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, POLL_INTERVAL
+
+
+def in_done_stack(card: dict):
+    board_id = card['board_id']
+    card_id = card['card_id']
+    stack_id = card['stack_id']
+    all_stacks_resp = requests.get(f"{BASE_URL}/boards/{board_id}/stacks?details=true", headers=HEADERS,
+                                   auth=HTTPBasicAuth(USERNAME, PASSWORD))
+    all_stacks_resp.raise_for_status()
+    data = all_stacks_resp.json()
+    if not data:
+        return None
+
+    now_stack = next((s['order'] for s in data if s['id'] == stack_id), None)
+    if now_stack == 0 or now_stack is None:
+        return None
+
+    done_stack = max(data, key=lambda s: (s['order'], s['id'] if s['order'] == 999 else 0))
+    if done_stack['order'] == now_stack:
+        return None
+
+    new_stack_id = done_stack['id']
+    position = 0
+    reorder_url = f"{BASE_URL}/boards/{board_id}/stacks/{new_stack_id}/cards/{card_id}/reorder"
+    payload = {"stackId": new_stack_id, "order": position}
+    move_resp = requests.put(reorder_url, headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), json=payload)
+    if move_resp.status_code not in (200, 204):
+        return None
+    return [done_stack['title'], new_stack_id]
 
 
 def _extract_counts(card: dict) -> Tuple[int, int]:
@@ -80,9 +110,8 @@ def _parse_due_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional[
         if dt_epoch.year <= 1971 and ts < 60_000_000:
             year = datetime.now(timezone.utc).year
             dt_year = datetime(year, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=ts)
-            logger.debug(
-                f"CLOUD: card {card_id} duedate_raw={value} -> seconds-from-year-start ({year}) -> {dt_year.isoformat()}"
-            )
+            logger.debug(f"CLOUD: card {card_id} duedate_raw={value} -> seconds-from-year-start ({year}) "
+                         f"-> {dt_year.isoformat()}")
             return dt_year.replace(tzinfo=None)
 
         return dt_epoch.replace(tzinfo=None)
@@ -259,6 +288,7 @@ def fetch_all_tasks():
                     done_raw = card.get('done')
                     done = _parse_done_utc_naive(done_raw, card_id=card.get('id'))
                     etag = card.get('ETag') or card.get('Etag') or card.get('etag')
+                    lastModified = (datetime.now() - datetime.fromtimestamp(card['lastModified'])).total_seconds()
 
                     result.append({
                         'card_id': card['id'], 'title': card['title'], 'description': card.get('description', ''),
@@ -269,7 +299,7 @@ def fetch_all_tasks():
                         'duedate': duedate_dt, 'done': done,
                         'assigned_logins': assigned_logins,
                         'comments_count': comments_count, 'attachments_count': attachments_count,
-                        'etag': etag
+                        'etag': etag, 'lastModified': int(lastModified)
                     })
 
         return result

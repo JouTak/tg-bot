@@ -1,6 +1,7 @@
 import mysql.connector
 from source.config import MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASS, MYSQL_DB
 
+
 def get_mysql_connection():
     conn = mysql.connector.connect(
         host=MYSQL_HOST,

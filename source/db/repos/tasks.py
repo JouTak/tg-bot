@@ -18,7 +18,8 @@ def save_task_to_db(card_id, title, description, board_id, board_title, stack_id
     cursor.execute(
         """
         INSERT INTO tasks
-          (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate, etag, prev_stack_id, prev_stack_title, next_stack_id, next_stack_title, done)
+          (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate,
+          etag, prev_stack_id, prev_stack_title, next_stack_id, next_stack_title, done)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE
           title=VALUES(title),
@@ -106,8 +107,7 @@ def get_tasks_from_users(login):
                     JOIN task_assignees ON tasks.card_id = task_assignees.card_id 
                     WHERE nc_login = %s 
                     GROUP BY card_id
-                    """,
-                   (login,))
+                    """, (login,))
     tasks = cursor.fetchall()
     cursor.close()
     conn.close()

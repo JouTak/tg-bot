@@ -9,6 +9,7 @@ import source.handlers  # noqa: F401
 import source.callbacks  # noqa: F401
 from source.deadlines import poll_deadlines
 
+
 def _get(obj, name, default=None):
     try:
         return getattr(obj, name)
@@ -18,6 +19,7 @@ def _get(obj, name, default=None):
         except Exception:
             return default
 
+
 def _updates_listener(updates):
     # включается только при дебаге
     for u in updates:
@@ -26,7 +28,8 @@ def _updates_listener(updates):
         if cq and getattr(cq, "message", None):
             logger.info(f"[UPD] callback_query chat_id={cq.message.chat.id} data={cq.data!r}")
         elif msg:
-            logger.info(f"[UPD] message chat_id={msg.chat.id} type={msg.chat.type} text={getattr(msg,'text',None)!r}")
+            logger.info(f"[UPD] message chat_id={msg.chat.id} type={msg.chat.type} text={getattr(msg, 'text', None)!r}")
+
 
 def _fmt_duration(seconds: float) -> str:
     if seconds < 1:
@@ -35,6 +38,7 @@ def _fmt_duration(seconds: float) -> str:
         return f"{seconds:.1f} s"
     m, s = divmod(int(round(seconds)), 60)
     return f"{m}m {s}s"
+
 
 def _is_network_error(exc: BaseException) -> bool:
     from requests.exceptions import ConnectionError, Timeout
@@ -64,11 +68,13 @@ def _brief(exc: BaseException) -> str:
         cur = getattr(cur, "__cause__", None) or getattr(cur, "__context__", None)
     return exc.__class__.__name__
 
+
 def run():
     if is_debug():
         try:
             info = bot.get_webhook_info()
-            logger.debug(f"Webhook(before): url='{_get(info,'url','')}' pending={_get(info,'pending_update_count',0)}")
+            logger.debug(
+                f"Webhook(before): url='{_get(info, 'url', '')}' pending={_get(info, 'pending_update_count', 0)}")
         except Exception as e:
             logger.debug(f"Webhook info error: {e}")
 
