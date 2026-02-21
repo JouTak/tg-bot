@@ -199,14 +199,14 @@ def poll_new_tasks():
                         if inc_comments > 0:
                             send_log(
                                 "💬 Новые комментарии:" + "\n"
-                                                          f"{inc_comments} в «{item['title']}»",
+                                f"{inc_comments} в «{item['title']}»",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
                         elif inc_comments < 0:
                             send_log(
                                 "🗑 Удалены комментарии: " + "\n"
-                                                             f"{-inc_comments} в «{item['title']}»",
+                                f"{-inc_comments} в «{item['title']}»",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
@@ -214,14 +214,14 @@ def poll_new_tasks():
                         if inc_attachments > 0:
                             send_log(
                                 "📎 Новые вложения:" + "\n"
-                                                       f"{inc_attachments} в «{item['title']}»",
+                                f"{inc_attachments} в «{item['title']}»",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
                         elif inc_attachments < 0:
                             send_log(
                                 "🗑 Удалены вложения: " + "\n"
-                                                          f" {-inc_attachments} в «{item['title']}»",
+                                f" {-inc_attachments} в «{item['title']}»",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
