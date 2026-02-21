@@ -13,7 +13,8 @@ from source.db.repos.users import get_user_map
 from source.db.repos.tasks import (
     get_saved_tasks, save_task_to_db, update_task_in_db,
     get_task_assignees, save_task_assignee,
-    get_task_stats_map, upsert_task_stats
+    get_task_stats_map, upsert_task_stats,
+    is_card_excluded
 )
 from source.app_logging import logger, is_debug
 from source.logging_service import send_log
