@@ -110,9 +110,8 @@ def _parse_due_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional[
         if dt_epoch.year <= 1971 and ts < 60_000_000:
             year = datetime.now(timezone.utc).year
             dt_year = datetime(year, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=ts)
-            logger.debug(
-                f"CLOUD: card {card_id} duedate_raw={value} -> seconds-from-year-start ({year}) -> {dt_year.isoformat()}"
-            )
+            logger.debug(f"CLOUD: card {card_id} duedate_raw={value} -> seconds-from-year-start ({year}) "
+                         f"-> {dt_year.isoformat()}")
             return dt_year.replace(tzinfo=None)
 
         return dt_epoch.replace(tzinfo=None)

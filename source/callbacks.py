@@ -4,6 +4,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from source.connections.bot_factory import bot
 from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS
 
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("move:"))
 def handle_card_move(call):
     """
@@ -14,7 +15,8 @@ def handle_card_move(call):
     current_stack_id = int(current_stack_id)
     card_id = int(card_id)
     new_stack_id = int(new_stack_id)
-    all_stacks_resp = requests.get(f"{BASE_URL}/boards/{board_id}/stacks?details=true", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
+    all_stacks_resp = requests.get(f"{BASE_URL}/boards/{board_id}/stacks?details=true", headers=HEADERS,
+                                   auth=HTTPBasicAuth(USERNAME, PASSWORD))
     all_stacks_resp.raise_for_status()
     all_stacks = sorted(all_stacks_resp.json(), key=lambda s: s['order'])
     new_stack_data = next(s for s in all_stacks if s['id'] == new_stack_id)
@@ -25,7 +27,8 @@ def handle_card_move(call):
     if move_resp.status_code not in (200, 204):
         bot.answer_callback_query(call.id, f"Ошибка API ({move_resp.status_code})")
         return
-    updated_stacks_resp = requests.get(f"{BASE_URL}/boards/{board_id}/stacks?details=true", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
+    updated_stacks_resp = requests.get(f"{BASE_URL}/boards/{board_id}/stacks?details=true", headers=HEADERS,
+                                       auth=HTTPBasicAuth(USERNAME, PASSWORD))
     updated_stacks_resp.raise_for_status()
     updated_stacks = sorted(updated_stacks_resp.json(), key=lambda s: s['order'])
     new_idx = next(idx for idx, s in enumerate(updated_stacks) if s['id'] == new_stack_id)

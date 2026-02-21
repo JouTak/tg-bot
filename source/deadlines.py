@@ -13,8 +13,7 @@ from source.db.repos.deadlines import get_last_sent_map, mark_sent, reset_sent_f
 from source.connections.sender import send_message_limited
 from source.links import card_url
 
-from source.config import DEADLINES_INTERVAL, TIMEZONE, QUIET_HOURS, DEADLINE_REPEAT_DAYS
-
+from source.config import DEADLINES_INTERVAL, TIMEZONE, QUIET_HOURS, DEADLINE_REPEAT_DAYS, EXCLUDED_CARD_IDS
 
 DEADLINES_INTERVAL = int(DEADLINES_INTERVAL)
 
@@ -32,7 +31,7 @@ def _parse_quiet(s: str) -> tuple[int, int]:
         a, b = s.split("-", 1)
         return int(a), int(b)
     except Exception:
-        return (0, 1)
+        return 0, 1
 
 
 QUIET_START, QUIET_END = _parse_quiet(QUIET_HOURS)
@@ -189,12 +188,16 @@ def poll_deadlines():
             active_due = 0
 
             for item in cards:
+                if item["card_id"] in EXCLUDED_CARD_IDS:
+                    continue
                 due = item.get("duedate")
                 if not due:
                     continue
                 with_due += 1
 
-                if (item.get("done") is not None) or ((item.get("done") is None) and (item.get("prev_stack_id") is None) and (item.get("next_stack_id") is None)):
+                if (item.get("done") is not None) or (
+                        (item.get("done") is None) and (item.get("prev_stack_id") is None) and (
+                        item.get("next_stack_id") is None)):
                     continue
 
                 assigned = set(item.get("assigned_logins") or [])
@@ -235,7 +238,8 @@ def poll_deadlines():
                         if last_stage != "post_repeat":
                             chosen_stage = "post_repeat"
                         else:
-                            if repeat_delta is not None and last_sent_utc is not None and (now_utc - last_sent_utc >= repeat_delta):
+                            if repeat_delta is not None and last_sent_utc is not None and (
+                                    now_utc - last_sent_utc >= repeat_delta):
                                 chosen_stage = "post_repeat"
                     else:
                         candidates = [

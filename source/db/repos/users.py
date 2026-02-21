@@ -1,5 +1,6 @@
 from source.db.db import get_mysql_connection
 
+
 def get_login_by_tg_id(tg_id):
     """
     Возвращает Nextcloud-логин пользователя по Telegram ID.
@@ -11,6 +12,7 @@ def get_login_by_tg_id(tg_id):
     cursor.close()
     conn.close()
     return row[0] if row else None
+
 
 def save_login_to_db(tg_id, nc_login):
     """
@@ -27,6 +29,7 @@ def save_login_to_db(tg_id, nc_login):
     cursor.close()
     conn.close()
 
+
 def get_user_list():
     """
     Возвращает список всех пользователей в формате [(tg_id, nc_login)].
@@ -38,6 +41,7 @@ def get_user_list():
     cursor.close()
     conn.close()
     return [(row[0], row[1]) for row in rows]
+
 
 def get_user_map():
     """
