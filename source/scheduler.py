@@ -32,8 +32,8 @@ def change_description(old_description, new_description):
     """
     result_txt = ''; add_text = ''; remove_text = ''; change_text = ''
     split_pattern = (
-        r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])' 
-        r'|[\s\n]{2,}'  
+        r'(?:(?<=[.!?])(?<!\d.)\s+|\n)(?=[А-ЯA-Z0-9])'
+        r'|[\s\n]{2,}'
         r'|[\r\n]+(?=\s*[-*+]\s+\[)'
     )
     old_desc = re.split(split_pattern, old_description.strip())
@@ -59,28 +59,27 @@ def change_description(old_description, new_description):
             continue
         if d.startswith("+ "):
             if is_checkbox(d[2:]) and count_checkbox[d[8:]] >= 2:
-                add_text += "\\\\\\_& " + d[4:].lstrip() + '_///\n'
+                change_text += f"_& {d[4:].lstrip()}_\n"
             elif is_checkbox(d[2:]):
-                add_text += "\\\\\\*+ " + d[4:].lstrip() + '*///\n'
+                add_text += f"*+ {d[4:].lstrip()}*\n"
             else:
-                add_text += "\\\\\\*" + d[2:].lstrip() + '*///\n'
+                add_text += f"*{d[2:].lstrip()}*\n"
         elif d.startswith("- "):
             if is_checkbox(d[2:]) and count_checkbox[d[8:]] == 1:
-                remove_text += "\\\\\\~- " + d[4:].lstrip() + '~///\n'
+                remove_text += f"~- {d[4:].lstrip()}~\n"
             elif not (is_checkbox(d[2:])):
-                remove_text += "\\\\\\~" + d[2:].lstrip() + '~///\n'
-
-        if len(add_text) > 0:
-            if add_text[-1] == '\n': add_text = add_text[:-1]
-        if len(remove_text) > 0:
-            if remove_text[-1] == '\n': remove_text = remove_text[:-1]
+                remove_text += f"~{d[2:].lstrip()}~\n"
 
     if len(add_text) > 0:
-        result_txt += f"{add_text}\n"
-    if len(remove_text) > 0:
-        result_txt += f"{remove_text}\n"
+        if add_text[-1] == '\n': add_text = add_text[:-1]
+        result_txt += f"\\\\\\{add_text}///\n"
     if len(change_text) > 0:
-        result_txt += f"{change_text}\n"
+        if change_text[-1] == '\n': change_text = change_text[:-1]
+        result_txt += f"\\\\\\{change_text}///\n"
+    if len(remove_text) > 0:
+        if remove_text[-1] == '\n': remove_text = remove_text[:-1]
+        result_txt += f"\\\\\\{remove_text}///\n"
+
     return result_txt
 
 
