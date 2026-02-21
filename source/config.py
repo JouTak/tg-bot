@@ -18,7 +18,9 @@ USERNAME = os.getenv("NEXTCLOUD_USER")
 PASSWORD = os.getenv("NEXTCLOUD_PASS")
 
 FORUM_CHAT_ID = int(os.getenv("FORUM_CHAT_ID", "0"))
-BOT_LOG_TOPIC_ID = int(os.getenv("BOT_LOG_TOPIC_ID", "0")) or None
+
+BOT_LOG_TOPIC_ID_RAW = os.getenv("BOT_LOG_TOPIC_ID", "0")
+BOT_LOG_TOPIC_ID = None if BOT_LOG_TOPIC_ID_RAW in ("None", "", None) else (int(BOT_LOG_TOPIC_ID_RAW) or None)
 
 MYSQL_HOST = os.getenv("MYSQL_HOST", "localhost")
 MYSQL_PORT = int(os.getenv("MYSQL_PORT", "3306"))
