@@ -67,7 +67,7 @@ def _auto_html(text: str | None) -> str:
     stashed = _a_tag_pat.sub(_stash, raw)
 
     s = html.escape(stashed, quote=False)
-    s = _quote_pat.sub(lambda m: f"<blockquote>{m.group(1)}</blockquote>", s)
+    s = _quote_pat.sub(lambda m: f"<blockquote expandable>{m.group(1)}</blockquote>", s)
     s = _pre_pat.sub(lambda m: f"<pre>{m.group(1)}</pre>", s)
     s = _bold_pat.sub(lambda m: f"<b>{m.group(1)}</b>", s)
     s = _code_pat.sub(lambda m: f"<code>{m.group(1)}</code>", s)
