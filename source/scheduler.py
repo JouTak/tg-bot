@@ -36,10 +36,10 @@ def change_description(old_description, new_description):
         r'|[\s\n]{2,}'  
         r'|[\r\n]+(?=\s*[-*+]\s+\[)'
     )
-    old_desc = re.split(split_pattern, old_description.strip()) #r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}'
+    old_desc = re.split(split_pattern, old_description.strip())
     old_desc = [s.strip() for s in old_desc if s.strip()]
 
-    new_desc = re.split(split_pattern, new_description.strip()) #r'(?<=[.!?])(?<!\d\.)\s+(?=[А-ЯA-Z0-9])|[\s\n]{2,}'
+    new_desc = re.split(split_pattern, new_description.strip())
     new_desc = [s.strip() for s in new_desc if s.strip()]
     checkbox_pattern = re.compile(r'^\s*[-*+]\s+\[([ xX])\]\s+(.*)')
     def is_checkbox(text):
