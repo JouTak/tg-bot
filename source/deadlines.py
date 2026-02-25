@@ -13,7 +13,7 @@ from source.db.repos.deadlines import get_last_sent_map, mark_sent, reset_sent_f
 from source.connections.sender import send_message_limited
 from source.links import card_url
 
-from source.config import DEADLINES_INTERVAL, TIMEZONE, QUIET_HOURS, DEADLINE_REPEAT_DAYS
+from source.config import DEADLINES_INTERVAL, TIMEZONE, QUIET_HOURS, DEADLINE_REPEAT_DAYS, EXCLUDED_CARD_IDS
 
 
 DEADLINES_INTERVAL = int(DEADLINES_INTERVAL)
@@ -23,6 +23,10 @@ try:
 except Exception:
     TEAM_TZ = timezone(timedelta(hours=3))
 
+
+def _should_notify(card_id: int) -> bool:
+    """Возвращает True, если по карточке можно отправлять уведомления."""
+    return card_id not in EXCLUDED_CARD_IDS
 
 def _parse_quiet(s: str) -> tuple[int, int]:
     """
@@ -271,25 +275,25 @@ def poll_deadlines():
                 "pre_24h": 5,
                 "pre_7d": 6,
             }
+            if _should_notify(item["card_id"]):
+                for login, entries in per_user.items():
+                    tg_id = login_map.get(login)
+                    if not tg_id:
+                        continue
 
-            for login, entries in per_user.items():
-                tg_id = login_map.get(login)
-                if not tg_id:
-                    continue
+                    entries.sort(key=lambda x: (priority.get(x[0], 9), x[2]))
+                    body = "\n".join(e[1] for e in entries)
 
-                entries.sort(key=lambda x: (priority.get(x[0], 9), x[2]))
-                body = "\n".join(e[1] for e in entries)
-
-                ok = send_message_limited(tg_id, f"⏰ Напоминания о дедлайнах:\n{body}")
-                if ok:
-                    for stage, _, card_id in entries:
-                        try:
-                            mark_sent(card_id, login, stage)
-                        except Exception as e:
-                            logger.error(f"DEADLINES: не удалось отметить отправку ({card_id}, {login}, {stage}): {e}")
-                            logger.debug(traceback.format_exc())
-                else:
-                    logger.warning(f"DEADLINES: уведомления {login} ({tg_id}) не доставлены, пропускаю mark_sent")
+                    ok = send_message_limited(tg_id, f"⏰ Напоминания о дедлайнах:\n{body}")
+                    if ok:
+                        for stage, _, card_id in entries:
+                            try:
+                                mark_sent(card_id, login, stage)
+                            except Exception as e:
+                                logger.error(f"DEADLINES: не удалось отметить отправку ({card_id}, {login}, {stage}): {e}")
+                                logger.debug(traceback.format_exc())
+                    else:
+                        logger.warning(f"DEADLINES: уведомления {login} ({tg_id}) не доставлены, пропускаю mark_sent")
 
         except Exception:
             logger.exception("DEADLINES: сбой цикла")

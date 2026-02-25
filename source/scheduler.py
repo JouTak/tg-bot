@@ -88,6 +88,20 @@ def _should_notify(card_id: int) -> bool:
     """Возвращает True, если по карточке можно отправлять уведомления."""
     return card_id not in EXCLUDED_CARD_IDS
 
+def _to_hashtag(text: str) -> str | None:
+    """
+    Преобразует строку в хештег:
+    - Добавляет '#' в начале
+    - Убирает все запрещённые символы (оставляет буквы, цифры, подчёркивания)
+    - Объединяет слова без пробелов
+    """
+
+    clean_text = re.sub(r'[^a-zA-Z0-9а-яА-Я_]', '', text)
+
+    if not clean_text:
+        return None
+
+    return f'#{clean_text}'
 
 def poll_new_tasks():
     """
@@ -281,7 +295,7 @@ def poll_new_tasks():
                                 ))
                             user_msg = (
                                 f"🆕 Новая задача: *{item['title']}*\n"
-                                f"Labels: {''.join(f'[{lab}]' for lab in item['labels']) or '—'}\n"
+                                f"Labels: {''.join(f'[{_to_hashtag(lab)}]' for lab in item['labels']) or '—'}\n"
                                 f"Board: {item['board_title']}\n"
                                 f"Column: {item['stack_title']}\n"
                                 f"Due: {item['duedate'] or '—'}\n"
@@ -301,7 +315,7 @@ def poll_new_tasks():
                     kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                     send_log(
                         f"🆕 *Новая задача*: {item['title']}\n"
-                        f"Labels: {''.join(f'[{lab}]' for lab in item['labels']) or '—'}\n"
+                        f"Labels: {''.join(f'[{_to_hashtag(lab)}]' for lab in item['labels']) or '—'}\n"
                         f"Board: {item['board_title']}\n"
                         f"Column: {item['stack_title']}\n"
                         f"Due: {item['duedate'] or '—'}\n"
