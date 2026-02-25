@@ -12,7 +12,7 @@ from source.connections.nextcloud_api import fetch_all_tasks, in_done_stack
 from source.db.repos.users import get_user_map
 from source.db.repos.tasks import (
     get_saved_tasks, save_task_to_db, update_task_in_db,
-    get_task_assignees, save_task_assignee,
+    get_task_assignees, save_task_assignee, delete_task_assignee,
     get_task_stats_map, upsert_task_stats
 )
 from source.app_logging import logger, is_debug
@@ -239,6 +239,11 @@ def poll_new_tasks():
                 assigned_logins_db = get_task_assignees(card_id)
                 assigned_logins_api = set(item.get('assigned_logins', []))
                 new_assignees = assigned_logins_api - assigned_logins_db
+                old_assignees = assigned_logins_db - assigned_logins_api
+
+                for login in old_assignees:
+                    delete_task_assignee(card_id, login)
+
                 for login in new_assignees:
                     save_task_assignee(card_id, login)
 

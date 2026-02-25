@@ -59,6 +59,19 @@ def save_task_assignee(card_id, nc_login):
     cursor.close()
     conn.close()
 
+def delete_task_assignee(card_id, nc_login):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        DELETE IGNORE FROM task_assignees
+        WHERE card_id = %s AND nc_login = %s
+        """,
+        (card_id, nc_login)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
 
 def get_task_assignees(card_id):
     conn = get_mysql_connection()
