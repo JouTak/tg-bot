@@ -13,7 +13,8 @@ from source.db.repos.users import get_user_map
 from source.db.repos.tasks import (
     get_saved_tasks, save_task_to_db, update_task_in_db,
     get_task_assignees, save_task_assignee, delete_task_assignee,
-    get_task_stats_map, upsert_task_stats
+    get_task_stats_map, upsert_task_stats,
+    get_task_labels, save_task_label, delete_task_label
 )
 from source.app_logging import logger, is_debug
 from source.logging_service import send_log
@@ -235,6 +236,17 @@ def poll_new_tasks():
                         item.get('duedate'), item.get('done'), etag_new
                     )
 
+                #labels
+                labels_api = set(item.get('labels', []))
+                labels_db = get_task_labels(card_id)
+                new_labels = labels_api - labels_db
+                old_labels = labels_db - labels_api
+                for label in old_labels:
+                    delete_task_label(card_id, label)
+
+                for label in new_labels:
+                    save_task_label(card_id, label)
+
                 # === Работа с назначенными (БД) — всегда ===
                 assigned_logins_db = get_task_assignees(card_id)
                 assigned_logins_api = set(item.get('assigned_logins', []))
@@ -269,10 +281,11 @@ def poll_new_tasks():
                                 ))
                             user_msg = (
                                 f"🆕 Новая задача: *{item['title']}*\n"
+                                f"Labels: {''.join(f'[{lab}]' for lab in item['labels']) or '—'}\n"
                                 f"Board: {item['board_title']}\n"
                                 f"Column: {item['stack_title']}\n"
                                 f"Due: {item['duedate'] or '—'}\n"
-                                f"Description: \n\\\\\\{item['description'] or '-'}///"
+                                f"Description: \n\\\\\\{item['description'] or '—'}///"
                             )
                             kb.add(
                                 InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
@@ -288,10 +301,11 @@ def poll_new_tasks():
                     kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                     send_log(
                         f"🆕 *Новая задача*: {item['title']}\n"
+                        f"Labels: {''.join(f'[{lab}]' for lab in item['labels']) or '—'}\n"
                         f"Board: {item['board_title']}\n"
                         f"Column: {item['stack_title']}\n"
                         f"Due: {item['duedate'] or '—'}\n"
-                        f"Description: \n\\\\\\{item['description'] or '-'}///",
+                        f"Description: \n\\\\\\{item['description'] or '—'}///",
                         board_id=item['board_id'],
                         reply_markup=kb,
                     )

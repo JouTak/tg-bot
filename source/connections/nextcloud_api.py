@@ -41,6 +41,20 @@ def in_done_stack(card: dict):
         return None
     return [done_stack['title'], new_stack_id]
 
+def _to_hashtag(text: str) -> str | None:
+    """
+    Преобразует строку в хештег:
+    - Добавляет '#' в начале
+    - Убирает все запрещённые символы (оставляет буквы, цифры, подчёркивания)
+    - Объединяет слова без пробелов
+    """
+
+    clean_text = re.sub(r'[^a-zA-Z0-9а-яА-Я_]', '', text)
+
+    if not clean_text:
+        return None
+
+    return f'#{clean_text}'
 
 def _extract_counts(card: dict) -> Tuple[int, int]:
     """
@@ -278,6 +292,7 @@ def fetch_all_tasks():
                     duedate_dt = _parse_due_utc_naive(duedate_raw, card_id=card.get('id'))
 
                     assigned_logins = [u['participant']['uid'] for u in (card.get('assignedUsers') or [])]
+                    labels = [_to_hashtag(lab['title']) for lab in (card.get('labels') or []) if _to_hashtag(lab['title'])]
 
                     prev_stack_id = stacks[idx - 1]['id'] if idx > 0 else None
                     prev_stack_title = stacks[idx - 1]['title'] if idx > 0 else None
@@ -299,6 +314,7 @@ def fetch_all_tasks():
                         'duedate': duedate_dt, 'done': done,
                         'assigned_logins': assigned_logins,
                         'comments_count': comments_count, 'attachments_count': attachments_count,
+                        'labels': labels,
                         'etag': etag, 'lastModified': int(lastModified)
                     })
 

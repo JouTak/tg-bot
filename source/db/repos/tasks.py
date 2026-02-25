@@ -177,3 +177,41 @@ def upsert_task_stats(card_id: int, comments_count: int, attachments_count: int)
     conn.commit()
     cursor.close()
     conn.close()
+
+def save_task_label(card_id, label):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT IGNORE INTO task_labels
+          (card_id, label)
+        VALUES (%s, %s)
+        """,
+        (card_id, label)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def delete_task_label(card_id, label):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        DELETE IGNORE FROM task_labels
+        WHERE card_id = %s AND label = %s
+        """,
+        (card_id, label)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def get_task_labels(card_id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT label FROM task_labels WHERE card_id = %s", (card_id,))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return set(row[0] for row in rows)
