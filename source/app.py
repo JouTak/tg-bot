@@ -8,7 +8,7 @@ from source.connections.bot_factory import bot
 import source.handlers  # noqa: F401
 import source.callbacks  # noqa: F401
 from source.deadlines import poll_deadlines
-from migrations.tables import create_table_task_labels
+from source.migrations.init_db import init_db
 
 
 def _get(obj, name, default=None):
@@ -92,7 +92,7 @@ def run():
 
     # migrations
     logger.info(f"Миграция базы данных.")
-    create_table_task_labels()
+    init_db()
 
     backoff = 5.0
     while True:
