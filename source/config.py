@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+import subprocess
 
 load_dotenv()
 
@@ -9,7 +10,30 @@ missing = [k for k in (
 if missing:
     raise RuntimeError(", ".join(missing))
 
-COMMIT_HASH = os.getenv("GIT_COMMIT", "unknown")
+
+def _detect_commit() -> str:
+    """
+    Определяет хеш коммита:
+    1. Из переменной окружения GIT_COMMIT (CI/Docker)
+    2. Из git rev-parse --short HEAD (локальный запуск)
+    3. 'unknown' если ничего не доступно
+    """
+    env_val = os.getenv("GIT_COMMIT", "").strip()
+    if env_val and env_val != "unknown":
+        return env_val
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+    return "unknown"
+
+
+COMMIT_HASH = _detect_commit()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 BASE_URL = os.getenv("BASE_URL")

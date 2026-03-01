@@ -6,6 +6,8 @@ import time
 from source.app_logging import logger, is_debug
 from source.scheduler import poll_new_tasks
 from source.connections.bot_factory import bot
+from source.connections.sender import send_message_limited
+from source.config import FORUM_CHAT_ID, BOT_LOG_TOPIC_ID, COMMIT_HASH
 import source.handlers  # noqa: F401
 import source.callbacks  # noqa: F401
 from source.deadlines import poll_deadlines
@@ -84,6 +86,29 @@ def _brief(exc: BaseException) -> str:
     return exc.__class__.__name__
 
 
+def _notify_startup():
+    """
+    Отправляет в форум-топик сообщение о запуске бота.
+    - Если BOT_LOG_TOPIC_ID не задан — ничего не отправляет.
+    - Если COMMIT_HASH известен — выводит коммит.
+    - Иначе — сообщает о локальном билде.
+    """
+    if BOT_LOG_TOPIC_ID is None:
+        return
+    if COMMIT_HASH and COMMIT_HASH != "unknown":
+        text = f"🔄 Бот перезапущен на коммите `{COMMIT_HASH}`!"
+    else:
+        text = "🔄 Бот перезапущен на локальном билде!"
+    try:
+        send_message_limited(
+            FORUM_CHAT_ID,
+            text,
+            message_thread_id=BOT_LOG_TOPIC_ID,
+        )
+    except Exception as e:
+        logger.warning(f"Не удалось отправить уведомление о старте: {e}")
+
+
 def run():
     if is_debug():
         try:
@@ -97,6 +122,8 @@ def run():
         bot.remove_webhook(drop_pending_updates=True)
     except TypeError:
         bot.remove_webhook()
+
+    _notify_startup()
 
     threading.Thread(target=poll_new_tasks, daemon=True).start()
     threading.Thread(target=poll_deadlines, daemon=True).start()
