@@ -1,4 +1,5 @@
 import socket
+import http.client
 import threading
 import time
 
@@ -8,7 +9,6 @@ from source.connections.bot_factory import bot
 import source.handlers  # noqa: F401
 import source.callbacks  # noqa: F401
 from source.deadlines import poll_deadlines
-from source.migrations.init_db import init_db
 
 
 def _get(obj, name, default=None):
@@ -22,7 +22,6 @@ def _get(obj, name, default=None):
 
 
 def _updates_listener(updates):
-    # включается только при дебаге
     for u in updates:
         cq = getattr(u, "callback_query", None)
         msg = getattr(u, "message", None)
@@ -47,10 +46,19 @@ def _is_network_error(exc: BaseException) -> bool:
         return True
     cur = exc
     while cur:
-        if isinstance(cur, (ConnectionError, Timeout, socket.gaierror)):
+        if isinstance(cur, (
+                ConnectionError, Timeout,
+                socket.gaierror,
+                ConnectionAbortedError,
+                ConnectionResetError,
+                http.client.RemoteDisconnected,
+        )):
             return True
         name = cur.__class__.__name__
-        if name in {"NameResolutionError", "NewConnectionError", "MaxRetryError"}:
+        if name in {
+            "NameResolutionError", "NewConnectionError",
+            "MaxRetryError", "ProtocolError",
+        }:
             return True
         cur = getattr(cur, "__cause__", None) or getattr(cur, "__context__", None)
     return False
@@ -66,6 +74,12 @@ def _brief(exc: BaseException) -> str:
     while cur:
         if isinstance(cur, socket.gaierror):
             return "DNS недоступен"
+        if isinstance(cur, http.client.RemoteDisconnected):
+            return "удалённый сервер разорвал соединение"
+        if isinstance(cur, ConnectionAbortedError):
+            return "соединение прервано хостом"
+        if isinstance(cur, ConnectionResetError):
+            return "соединение сброшено"
         cur = getattr(cur, "__cause__", None) or getattr(cur, "__context__", None)
     return exc.__class__.__name__
 
@@ -89,10 +103,6 @@ def run():
 
     if is_debug():
         bot.set_update_listener(_updates_listener)
-
-    # migrations
-    logger.info(f"Миграция базы данных.")
-    init_db()
 
     backoff = 5.0
     while True:

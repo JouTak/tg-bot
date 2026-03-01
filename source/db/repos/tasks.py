@@ -59,6 +59,7 @@ def save_task_assignee(card_id, nc_login):
     cursor.close()
     conn.close()
 
+
 def delete_task_assignee(card_id, nc_login):
     conn = get_mysql_connection()
     cursor = conn.cursor()
@@ -72,6 +73,7 @@ def delete_task_assignee(card_id, nc_login):
     conn.commit()
     cursor.close()
     conn.close()
+
 
 def get_task_assignees(card_id):
     conn = get_mysql_connection()
@@ -178,6 +180,7 @@ def upsert_task_stats(card_id: int, comments_count: int, attachments_count: int)
     cursor.close()
     conn.close()
 
+
 def save_task_label(card_id, label):
     conn = get_mysql_connection()
     cursor = conn.cursor()
@@ -193,6 +196,7 @@ def save_task_label(card_id, label):
     cursor.close()
     conn.close()
 
+
 def delete_task_label(card_id, label):
     conn = get_mysql_connection()
     cursor = conn.cursor()
@@ -207,6 +211,7 @@ def delete_task_label(card_id, label):
     cursor.close()
     conn.close()
 
+
 def get_task_labels(card_id):
     conn = get_mysql_connection()
     cursor = conn.cursor()
@@ -215,3 +220,20 @@ def get_task_labels(card_id):
     cursor.close()
     conn.close()
     return set(row[0] for row in rows)
+
+
+def delete_task_full(card_id):
+    """
+    Полностью удаляет карточку и все связанные записи из БД.
+    Используется после архивации на стороне Nextcloud.
+    """
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM deadline_reminders WHERE card_id = %s", (card_id,))
+    cursor.execute("DELETE FROM task_labels WHERE card_id = %s", (card_id,))
+    cursor.execute("DELETE FROM task_assignees WHERE card_id = %s", (card_id,))
+    cursor.execute("DELETE FROM task_stats WHERE card_id = %s", (card_id,))
+    cursor.execute("DELETE FROM tasks WHERE card_id = %s", (card_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
