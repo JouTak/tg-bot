@@ -2,18 +2,20 @@ import time
 import re
 import difflib
 import traceback
-from datetime import timezone, timedelta
+from datetime import datetime, timezone, timedelta
 from collections import Counter
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from source.config import POLL_INTERVAL, EXCLUDED_CARD_IDS
+from source.config import POLL_INTERVAL, EXCLUDED_CARD_IDS, ARCHIVE_AFTER_DAYS
 from source.connections.sender import send_message_limited
-from source.connections.nextcloud_api import fetch_all_tasks, in_done_stack
+from source.connections.nextcloud_api import fetch_all_tasks, in_done_stack, archive_card
 from source.db.repos.users import get_user_map
 from source.db.repos.tasks import (
     get_saved_tasks, save_task_to_db, update_task_in_db,
-    get_task_assignees, save_task_assignee,
-    get_task_stats_map, upsert_task_stats
+    get_task_assignees, save_task_assignee, delete_task_assignee,
+    get_task_stats_map, upsert_task_stats,
+    get_task_labels, save_task_label, delete_task_label,
+    delete_task_full
 )
 from source.app_logging import logger, is_debug
 from source.logging_service import send_log
@@ -30,7 +32,10 @@ def change_description(old_description, new_description):
 
     Возвращает текст различий для уведомления.
     """
-    result_txt = ''; add_text = ''; remove_text = ''; change_text = ''
+    result_txt = '';
+    add_text = '';
+    remove_text = '';
+    change_text = ''
     split_pattern = (
         r'(?:(?<=[.!?])(?<!\d.)\s+|\n)(?=[А-ЯA-Z0-9])'
         r'|[\s\n]{2,}'
@@ -88,6 +93,22 @@ def _should_notify(card_id: int) -> bool:
     return card_id not in EXCLUDED_CARD_IDS
 
 
+def _to_hashtag(text: str) -> str | None:
+    """
+    Преобразует строку в хештег:
+    - Добавляет '#' в начале
+    - Убирает все запрещённые символы (оставляет буквы, цифры, подчёркивания)
+    - Объединяет слова без пробелов
+    """
+
+    clean_text = re.sub(r'[^a-zA-Z0-9а-яА-Я_]', '', text)
+
+    if not clean_text:
+        return None
+
+    return f'#{clean_text}'
+
+
 def poll_new_tasks():
     """
     Фоновый процесс:
@@ -96,9 +117,11 @@ def poll_new_tasks():
     - определяет новые и изменённые карточки
     - отправляет уведомления (кроме исключённых)
     - обновляет статистику комментариев и вложений
+    - архивирует карточки, готовые более ARCHIVE_AFTER_DAYS дней
     """
     logger.info(f"CLOUD: Запускается фоновый опрос задач, частота: {POLL_INTERVAL} секунд!")
     MSK = timezone(timedelta(hours=3))
+    archive_threshold = timedelta(days=ARCHIVE_AFTER_DAYS)
     while True:
         try:
             logger.info(f"CLOUD: Начинается плановое получение задач")
@@ -195,14 +218,14 @@ def poll_new_tasks():
                         if inc_comments > 0:
                             send_log(
                                 "💬 Новые комментарии:" + "\n"
-                                f"{inc_comments} в «{item['title']}»",
+                                                          f"{inc_comments} в «{item['title']}»",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
                         elif inc_comments < 0:
                             send_log(
                                 "🗑 Удалены комментарии: " + "\n"
-                                f"{-inc_comments} в «{item['title']}»",
+                                                             f"{-inc_comments} в «{item['title']}»",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
@@ -210,14 +233,14 @@ def poll_new_tasks():
                         if inc_attachments > 0:
                             send_log(
                                 "📎 Новые вложения:" + "\n"
-                                f"{inc_attachments} в «{item['title']}»",
+                                                       f"{inc_attachments} в «{item['title']}»",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
                         elif inc_attachments < 0:
                             send_log(
                                 "🗑 Удалены вложения: " + "\n"
-                                f" {-inc_attachments} в «{item['title']}»",
+                                                          f" {-inc_attachments} в «{item['title']}»",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
@@ -235,10 +258,26 @@ def poll_new_tasks():
                         item.get('duedate'), item.get('done'), etag_new
                     )
 
+                # labels
+                labels_api = set(item.get('labels', []))
+                labels_db = get_task_labels(card_id)
+                new_labels = labels_api - labels_db
+                old_labels = labels_db - labels_api
+                for label in old_labels:
+                    delete_task_label(card_id, label)
+
+                for label in new_labels:
+                    save_task_label(card_id, label)
+
                 # === Работа с назначенными (БД) — всегда ===
                 assigned_logins_db = get_task_assignees(card_id)
                 assigned_logins_api = set(item.get('assigned_logins', []))
                 new_assignees = assigned_logins_api - assigned_logins_db
+                old_assignees = assigned_logins_db - assigned_logins_api
+
+                for login in old_assignees:
+                    delete_task_assignee(card_id, login)
+
                 for login in new_assignees:
                     save_task_assignee(card_id, login)
 
@@ -264,10 +303,11 @@ def poll_new_tasks():
                                 ))
                             user_msg = (
                                 f"🆕 Новая задача: *{item['title']}*\n"
+                                f"Labels: {''.join(f'[{_to_hashtag(lab)}]' for lab in item['labels']) or '—'}\n"
                                 f"Board: {item['board_title']}\n"
                                 f"Column: {item['stack_title']}\n"
                                 f"Due: {item['duedate'] or '—'}\n"
-                                f"Description: \n\\\\\\{item['description'] or '-'}///"
+                                f"Description: \n\\\\\\{item['description'] or '—'}///"
                             )
                             kb.add(
                                 InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
@@ -283,10 +323,11 @@ def poll_new_tasks():
                     kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                     send_log(
                         f"🆕 *Новая задача*: {item['title']}\n"
+                        f"Labels: {''.join(f'[{_to_hashtag(lab)}]' for lab in item['labels']) or '—'}\n"
                         f"Board: {item['board_title']}\n"
                         f"Column: {item['stack_title']}\n"
                         f"Due: {item['duedate'] or '—'}\n"
-                        f"Description: \n\\\\\\{item['description'] or '-'}///",
+                        f"Description: \n\\\\\\{item['description'] or '—'}///",
                         board_id=item['board_id'],
                         reply_markup=kb,
                     )
@@ -305,6 +346,30 @@ def poll_new_tasks():
                         board_id=item['board_id'],
                         reply_markup=kb,
                     )
+
+                # === Автоархивация: готова более ARCHIVE_AFTER_DAYS дней ===
+                done_ts = item.get('done')
+                if done_ts is not None and ARCHIVE_AFTER_DAYS > 0:
+                    done_utc = done_ts.replace(tzinfo=timezone.utc) if done_ts.tzinfo is None else done_ts
+                    now_utc = datetime.now(timezone.utc)
+                    if (now_utc - done_utc) > archive_threshold:
+                        if archive_card(item['board_id'], item['stack_id'], card_id):
+                            days_done = (now_utc - done_utc).days
+                            logger.info(
+                                f"CLOUD: карточка «{item['title']}» (ID {card_id}) "
+                                f"архивирована автоматически "
+                                f"(готова {days_done} дн.)"
+                            )
+                            try:
+                                delete_task_full(card_id)
+                                logger.info(
+                                    f"CLOUD: карточка {card_id} удалена из локальной БД"
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    f"CLOUD: не удалось удалить карточку {card_id} "
+                                    f"из БД после архивации: {e}"
+                                )
 
             logger.info("CLOUD: " + ("изменения найдены." if changes_flag else "изменений не обнаружено."))
         except Exception as e:

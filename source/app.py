@@ -1,4 +1,5 @@
 import socket
+import http.client
 import threading
 import time
 
@@ -21,7 +22,6 @@ def _get(obj, name, default=None):
 
 
 def _updates_listener(updates):
-    # включается только при дебаге
     for u in updates:
         cq = getattr(u, "callback_query", None)
         msg = getattr(u, "message", None)
@@ -46,10 +46,19 @@ def _is_network_error(exc: BaseException) -> bool:
         return True
     cur = exc
     while cur:
-        if isinstance(cur, (ConnectionError, Timeout, socket.gaierror)):
+        if isinstance(cur, (
+                ConnectionError, Timeout,
+                socket.gaierror,
+                ConnectionAbortedError,
+                ConnectionResetError,
+                http.client.RemoteDisconnected,
+        )):
             return True
         name = cur.__class__.__name__
-        if name in {"NameResolutionError", "NewConnectionError", "MaxRetryError"}:
+        if name in {
+            "NameResolutionError", "NewConnectionError",
+            "MaxRetryError", "ProtocolError",
+        }:
             return True
         cur = getattr(cur, "__cause__", None) or getattr(cur, "__context__", None)
     return False
@@ -65,6 +74,12 @@ def _brief(exc: BaseException) -> str:
     while cur:
         if isinstance(cur, socket.gaierror):
             return "DNS недоступен"
+        if isinstance(cur, http.client.RemoteDisconnected):
+            return "удалённый сервер разорвал соединение"
+        if isinstance(cur, ConnectionAbortedError):
+            return "соединение прервано хостом"
+        if isinstance(cur, ConnectionResetError):
+            return "соединение сброшено"
         cur = getattr(cur, "__cause__", None) or getattr(cur, "__context__", None)
     return exc.__class__.__name__
 

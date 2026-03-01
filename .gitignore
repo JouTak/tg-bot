@@ -1,3 +1,10 @@
 .env
 bot.log
 .idea
+project_bundle.py
+project_bundle.txt
+source/__pycache__
+source/connections/__pycache__
+source/db/__pycache__/
+source/db/repos/__pycache__/
+source/migrations/__pycache__/

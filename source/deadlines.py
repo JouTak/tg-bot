@@ -13,8 +13,7 @@ from source.db.repos.deadlines import get_last_sent_map, mark_sent, reset_sent_f
 from source.connections.sender import send_message_limited
 from source.links import card_url
 
-from source.config import DEADLINES_INTERVAL, TIMEZONE, QUIET_HOURS, DEADLINE_REPEAT_DAYS
-
+from source.config import DEADLINES_INTERVAL, TIMEZONE, QUIET_HOURS, DEADLINE_REPEAT_DAYS, EXCLUDED_CARD_IDS
 
 DEADLINES_INTERVAL = int(DEADLINES_INTERVAL)
 
@@ -22,6 +21,11 @@ try:
     TEAM_TZ = ZoneInfo(TIMEZONE)
 except Exception:
     TEAM_TZ = timezone(timedelta(hours=3))
+
+
+def _should_notify(card_id: int) -> bool:
+    """Возвращает True, если по карточке можно отправлять уведомления."""
+    return card_id not in EXCLUDED_CARD_IDS
 
 
 def _parse_quiet(s: str) -> tuple[int, int]:
@@ -61,19 +65,12 @@ def _at_team_10(utc_dt: datetime) -> datetime:
 def _fixed_schedule(due_utc: datetime) -> dict[str, datetime]:
     """
     Формирует расписание напоминаний:
-    - за 7 дней
     - за 24 часа
-    - за 2 часа
     - в момент дедлайна
-    - после дедлайна
     """
     return {
-        "pre_7d": _at_team_10(due_utc - timedelta(days=7)),
         "pre_24h": _at_team_10(due_utc - timedelta(days=1)),
-        "pre_2h": due_utc - timedelta(hours=2),
         "due": due_utc,
-        "post_2h": due_utc + timedelta(hours=2),
-        "post_24h": _at_team_10(due_utc + timedelta(days=1)),
     }
 
 
@@ -110,12 +107,8 @@ def _line_for_stage(stage: str, item: dict, now_utc: datetime) -> str:
     due_s = _fmt_due_local(due)
 
     prefix = {
-        "pre_7d": "📅 Через неделю",
         "pre_24h": "🌝 Завтра",
-        "pre_2h": "⏳ Через ~2 часа",
         "due": "🔔 Срок наступил",
-        "post_2h": "⚠️ Просрочено на ~2 часа",
-        "post_24h": "🌚 Просрочено на день",
         "post_repeat": f"🔁 Просрочено уже {(now_utc - due).days} дн.",
     }.get(stage, "⏰ Напоминание")
 
@@ -152,10 +145,9 @@ def poll_deadlines():
     """
     logger.info(f"DEADLINES: Запускается фоновый опрос, частота {DEADLINES_INTERVAL} секунд!")
 
-    FIXED = ["pre_7d", "pre_24h", "pre_2h", "due", "post_2h", "post_24h"]
+    FIXED = ["pre_24h", "due"]
     FIXED_RANK = {s: i for i, s in enumerate(FIXED)}
     DUE_RANK = FIXED_RANK["due"]
-    POST24_RANK = FIXED_RANK["post_24h"]
 
     while True:
         try:
@@ -194,7 +186,9 @@ def poll_deadlines():
                     continue
                 with_due += 1
 
-                if (item.get("done") is not None) or ((item.get("done") is None) and (item.get("prev_stack_id") is None) and (item.get("next_stack_id") is None)):
+                if (item.get("done") is not None) or (
+                        (item.get("done") is None) and (item.get("prev_stack_id") is None) and (
+                        item.get("next_stack_id") is None)):
                     continue
 
                 assigned = set(item.get("assigned_logins") or [])
@@ -204,8 +198,8 @@ def poll_deadlines():
                 active_due += 1
 
                 fixed_sched = _fixed_schedule(due)
-                post24_time = fixed_sched["post_24h"]
-                repeat_zone = (repeat_delta is not None) and (now_utc >= (post24_time + repeat_delta))
+                due_time = fixed_sched["due"]
+                repeat_zone = (repeat_delta is not None) and (now_utc >= (due_time + repeat_delta))
 
                 for login in assigned:
                     last = last_map.get((item["card_id"], login))
@@ -217,7 +211,7 @@ def poll_deadlines():
                     if last_stage in FIXED_RANK:
                         last_fixed_rank = FIXED_RANK[last_stage]
                     elif last_stage == "post_repeat":
-                        last_fixed_rank = POST24_RANK
+                        last_fixed_rank = DUE_RANK
 
                     if now_utc < due and last_fixed_rank >= DUE_RANK:
                         try:
@@ -235,7 +229,8 @@ def poll_deadlines():
                         if last_stage != "post_repeat":
                             chosen_stage = "post_repeat"
                         else:
-                            if repeat_delta is not None and last_sent_utc is not None and (now_utc - last_sent_utc >= repeat_delta):
+                            if repeat_delta is not None and last_sent_utc is not None and (
+                                    now_utc - last_sent_utc >= repeat_delta):
                                 chosen_stage = "post_repeat"
                     else:
                         candidates = [
@@ -264,32 +259,29 @@ def poll_deadlines():
 
             priority = {
                 "due": 0,
-                "post_2h": 1,
-                "post_24h": 2,
-                "post_repeat": 3,
-                "pre_2h": 4,
-                "pre_24h": 5,
-                "pre_7d": 6,
+                "post_repeat": 1,
+                "pre_24h": 2,
             }
+            if _should_notify(item["card_id"]):
+                for login, entries in per_user.items():
+                    tg_id = login_map.get(login)
+                    if not tg_id:
+                        continue
 
-            for login, entries in per_user.items():
-                tg_id = login_map.get(login)
-                if not tg_id:
-                    continue
+                    entries.sort(key=lambda x: (priority.get(x[0], 9), x[2]))
+                    body = "\n".join(e[1] for e in entries)
 
-                entries.sort(key=lambda x: (priority.get(x[0], 9), x[2]))
-                body = "\n".join(e[1] for e in entries)
-
-                ok = send_message_limited(tg_id, f"⏰ Напоминания о дедлайнах:\n{body}")
-                if ok:
-                    for stage, _, card_id in entries:
-                        try:
-                            mark_sent(card_id, login, stage)
-                        except Exception as e:
-                            logger.error(f"DEADLINES: не удалось отметить отправку ({card_id}, {login}, {stage}): {e}")
-                            logger.debug(traceback.format_exc())
-                else:
-                    logger.warning(f"DEADLINES: уведомления {login} ({tg_id}) не доставлены, пропускаю mark_sent")
+                    ok = send_message_limited(tg_id, f"⏰ Напоминания о дедлайнах:\n{body}")
+                    if ok:
+                        for stage, _, card_id in entries:
+                            try:
+                                mark_sent(card_id, login, stage)
+                            except Exception as e:
+                                logger.error(
+                                    f"DEADLINES: не удалось отметить отправку ({card_id}, {login}, {stage}): {e}")
+                                logger.debug(traceback.format_exc())
+                    else:
+                        logger.warning(f"DEADLINES: уведомления {login} ({tg_id}) не доставлены, пропускаю mark_sent")
 
         except Exception:
             logger.exception("DEADLINES: сбой цикла")

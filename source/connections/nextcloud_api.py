@@ -4,7 +4,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Tuple, Optional, Any
 
 import requests
-import socket, http.client
+import socket
+import http.client
 
 from requests.exceptions import RequestException, ConnectionError, Timeout
 from requests.auth import HTTPBasicAuth
@@ -235,71 +236,131 @@ def fetch_all_tasks():
         logger.debug("CLOUD: получаю все карточки")
         result = []
         try:
-            boards_resp = requests.get(f"{BASE_URL}/boards", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
+            boards_resp = requests.get(
+                f"{BASE_URL}/boards",
+                headers=HEADERS,
+                auth=HTTPBasicAuth(USERNAME, PASSWORD),
+            )
             boards_resp.raise_for_status()
             boards = boards_resp.json()
+
+            for board in boards:
+                if board.get('archived', False):
+                    continue
+
+                board_id = board['id']
+                board_title = board['title']
+
+                stacks_resp = requests.get(
+                    f"{BASE_URL}/boards/{board_id}/stacks?details=true",
+                    headers=HEADERS,
+                    auth=HTTPBasicAuth(USERNAME, PASSWORD),
+                )
+                stacks_resp.raise_for_status()
+                stacks = sorted(stacks_resp.json(), key=lambda s: s['order'])
+
+                for idx, stack in enumerate(stacks):
+                    stack_id = stack['id']
+                    stack_title = stack['title']
+
+                    cards = stack.get('cards') or []
+                    if not cards:
+                        sd = requests.get(
+                            f"{BASE_URL}/boards/{board_id}/stacks/{stack_id}?details=true",
+                            headers=HEADERS,
+                            auth=HTTPBasicAuth(USERNAME, PASSWORD),
+                        )
+                        sd.raise_for_status()
+                        cards = sd.json().get('cards', [])
+
+                    for card in cards:
+                        duedate_raw = card.get('duedate') or card.get('dueDate')
+                        duedate_dt = _parse_due_utc_naive(duedate_raw, card_id=card.get('id'))
+
+                        assigned_logins = [
+                            u['participant']['uid']
+                            for u in (card.get('assignedUsers') or [])
+                        ]
+
+                        prev_stack_id = stacks[idx - 1]['id'] if idx > 0 else None
+                        prev_stack_title = stacks[idx - 1]['title'] if idx > 0 else None
+                        next_stack_id = stacks[idx + 1]['id'] if idx < len(stacks) - 1 else None
+                        next_stack_title = stacks[idx + 1]['title'] if idx < len(stacks) - 1 else None
+
+                        comments_count, attachments_count = _extract_counts(card)
+                        done_raw = card.get('done')
+                        done = _parse_done_utc_naive(done_raw, card_id=card.get('id'))
+                        etag = card.get('ETag') or card.get('Etag') or card.get('etag')
+                        lastModified = (
+                                datetime.now() - datetime.fromtimestamp(card['lastModified'])
+                        ).total_seconds()
+
+                        labels = [
+                            l.get('title', '')
+                            for l in (card.get('labels') or [])
+                            if l.get('title')
+                        ]
+
+                        result.append({
+                            'card_id': card['id'],
+                            'title': card['title'],
+                            'description': card.get('description', ''),
+                            'board_id': board_id,
+                            'board_title': board_title,
+                            'stack_id': stack_id,
+                            'stack_title': stack_title,
+                            'prev_stack_id': prev_stack_id,
+                            'prev_stack_title': prev_stack_title,
+                            'next_stack_id': next_stack_id,
+                            'next_stack_title': next_stack_title,
+                            'duedate': duedate_dt,
+                            'done': done,
+                            'assigned_logins': assigned_logins,
+                            'comments_count': comments_count,
+                            'attachments_count': attachments_count,
+                            'etag': etag,
+                            'lastModified': int(lastModified),
+                            'labels': labels,
+                        })
+
         except (RequestException, ConnectionError, Timeout,
-                http.client.RemoteDisconnected, ConnectionResetError, socket.gaierror) as e:
-            logger.warning(f"CLOUD: соединение сброшено/недоступно: {e}. Повтор через {POLL_INTERVAL} секунд.")
+                http.client.RemoteDisconnected, ConnectionResetError,
+                socket.gaierror, ConnectionAbortedError) as e:
+            logger.warning(
+                f"CLOUD: соединение сброшено/недоступно: {e}. "
+                f"Повтор через {POLL_INTERVAL} секунд."
+            )
             time.sleep(POLL_INTERVAL)
             continue
 
-        for board in boards:
-            if board.get('archived', False):
-                continue
-
-            board_id = board['id']
-            board_title = board['title']
-
-            stacks_resp = requests.get(
-                f"{BASE_URL}/boards/{board_id}/stacks?details=true",
-                headers=HEADERS,
-                auth=HTTPBasicAuth(USERNAME, PASSWORD)
-            )
-            stacks_resp.raise_for_status()
-            stacks = sorted(stacks_resp.json(), key=lambda s: s['order'])
-
-            for idx, stack in enumerate(stacks):
-                stack_id = stack['id']
-                stack_title = stack['title']
-
-                cards = stack.get('cards') or []
-                if not cards:
-                    sd = requests.get(
-                        f"{BASE_URL}/boards/{board_id}/stacks/{stack_id}?details=true",
-                        headers=HEADERS,
-                        auth=HTTPBasicAuth(USERNAME, PASSWORD)
-                    )
-                    sd.raise_for_status()
-                    cards = sd.json().get('cards', [])
-
-                for card in cards:
-                    duedate_raw = card.get('duedate') or card.get('dueDate')
-                    duedate_dt = _parse_due_utc_naive(duedate_raw, card_id=card.get('id'))
-
-                    assigned_logins = [u['participant']['uid'] for u in (card.get('assignedUsers') or [])]
-
-                    prev_stack_id = stacks[idx - 1]['id'] if idx > 0 else None
-                    prev_stack_title = stacks[idx - 1]['title'] if idx > 0 else None
-                    next_stack_id = stacks[idx + 1]['id'] if idx < len(stacks) - 1 else None
-                    next_stack_title = stacks[idx + 1]['title'] if idx < len(stacks) - 1 else None
-
-                    comments_count, attachments_count = _extract_counts(card)
-                    done_raw = card.get('done')
-                    done = _parse_done_utc_naive(done_raw, card_id=card.get('id'))
-                    etag = card.get('ETag') or card.get('Etag') or card.get('etag')
-                    lastModified = (datetime.now() - datetime.fromtimestamp(card['lastModified'])).total_seconds()
-
-                    result.append({
-                        'card_id': card['id'], 'title': card['title'], 'description': card.get('description', ''),
-                        'board_id': board_id, 'board_title': board_title,
-                        'stack_id': stack_id, 'stack_title': stack_title,
-                        'prev_stack_id': prev_stack_id, 'prev_stack_title': prev_stack_title,
-                        'next_stack_id': next_stack_id, 'next_stack_title': next_stack_title,
-                        'duedate': duedate_dt, 'done': done,
-                        'assigned_logins': assigned_logins,
-                        'comments_count': comments_count, 'attachments_count': attachments_count,
-                        'etag': etag, 'lastModified': int(lastModified)
-                    })
-
         return result
+
+
+def archive_card(board_id, stack_id, card_id):
+    """
+    Архивирует карточку через REST API Nextcloud Deck.
+    PUT /boards/{boardId}/stacks/{stackId}/cards/{cardId}/archive
+    """
+    url = f"{BASE_URL}/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/archive"
+    try:
+        resp = requests.put(
+            url,
+            headers=HEADERS,
+            auth=HTTPBasicAuth(USERNAME, PASSWORD),
+        )
+        if resp.status_code in (200, 204):
+            logger.info(
+                f"CLOUD: карточка {card_id} (board={board_id}, "
+                f"stack={stack_id}) успешно архивирована"
+            )
+            return True
+        logger.warning(
+            f"CLOUD: не удалось архивировать карточку {card_id}: "
+            f"HTTP {resp.status_code} — {resp.text[:200]}"
+        )
+        return False
+    except (RequestException, ConnectionError, Timeout,
+            http.client.RemoteDisconnected, ConnectionResetError,
+            socket.gaierror, ConnectionAbortedError) as e:
+        logger.warning(f"CLOUD: сетевая ошибка при архивации карточки {card_id}: {e}")
+        return False
