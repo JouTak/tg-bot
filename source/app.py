@@ -22,7 +22,7 @@ def _get(obj, name, default=None):
 
 
 def _updates_listener(updates):
-    # включается только при дебаге
+    # Включается только при дебаге
     for u in updates:
         cq = getattr(u, "callback_query", None)
         msg = getattr(u, "message", None)
