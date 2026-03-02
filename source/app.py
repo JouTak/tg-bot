@@ -11,6 +11,7 @@ from source.config import FORUM_CHAT_ID, BOT_LOG_TOPIC_ID, COMMIT_HASH
 import source.handlers  # noqa: F401
 import source.callbacks  # noqa: F401
 from source.deadlines import poll_deadlines
+from source.migrations.init_db import init_db
 
 
 def _get(obj, name, default=None):
@@ -130,6 +131,10 @@ def run():
 
     if is_debug():
         bot.set_update_listener(_updates_listener)
+
+    # migrations
+    logger.info(f"Миграция базы данных.")
+    init_db()
 
     backoff = 5.0
     while True:
