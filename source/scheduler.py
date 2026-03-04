@@ -125,7 +125,6 @@ def poll_new_tasks():
     MSK = timezone(timedelta(hours=3))
     archive_threshold = timedelta(days=ARCHIVE_AFTER_DAYS)
     while True:
-        start = time.time()
         try:
             logger.info(f"CLOUD: Начинается плановое получение задач")
             changes_flag = False
@@ -424,6 +423,4 @@ def poll_new_tasks():
         except Exception as e:
             logger.error(f"CLOUD: ошибка плановой обработки задач — {e}")
             logger.debug(traceback.format_exc())
-        end = time.time()
-        print("Время выполнения:", end - start)
         time.sleep(POLL_INTERVAL)
