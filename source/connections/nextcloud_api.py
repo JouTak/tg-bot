@@ -12,7 +12,7 @@ from requests.auth import HTTPBasicAuth
 
 from source.app_logging import logger
 from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, POLL_INTERVAL, OCS_BASE_URL
-
+from source.db.repos.tasks import get_etag_count
 
 def in_done_stack(card: dict):
     board_id = card['board_id']
@@ -160,6 +160,8 @@ def _parse_done_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional
 def get_url_attachment(path):
     body = {'path': path, 'shareType': 3}
     attach = requests.post(f"{OCS_BASE_URL}/files_sharing/api/v1/shares?format=json", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), json=body)
+    if attach.status_code == 404:
+        return None
     attach.raise_for_status()
     attachment_url = attach.json()
     return attachment_url.get('ocs', {}).get('data', {}).get('url')
@@ -329,13 +331,19 @@ def fetch_all_tasks():
                         done_raw = card.get('done')
                         done = _parse_done_utc_naive(done_raw, card_id=card.get('id'))
                         etag = card.get('ETag') or card.get('Etag') or card.get('etag')
+                        old_etag, old_comments_count, old_attachments_count = get_etag_count(card['id'])
                         lastModified = (
                                 datetime.now() - datetime.fromtimestamp(card['lastModified'])
                         ).total_seconds()
+                        attachments_data = None
+                        comments_data = None
 
-                        attachments_data = _get_list_attachments(board_id, stack_id, card['id'])
+                        if old_etag != etag:
+                            if old_comments_count != comments_count:
+                                comments_data = get_comments(card['id'])
 
-                        comments_data = get_comments(card['id'])
+                            if old_attachments_count != attachments_count:
+                                attachments_data = _get_list_attachments(board_id, stack_id, card['id'])
 
                         labels = [
                             l.get('title', '')

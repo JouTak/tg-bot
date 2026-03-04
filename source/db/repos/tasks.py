@@ -314,3 +314,17 @@ def delete_task_full(card_id):
     conn.commit()
     cursor.close()
     conn.close()
+
+def get_etag_count(card_id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+                    SELECT tasks.etag, task_stats.comments_count, task_stats.attachments_count 
+                    FROM tasks 
+                    JOIN task_stats ON tasks.card_id = task_stats.card_id 
+                    WHERE tasks.card_id = %s
+                """, (card_id,))
+    data = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return list(data)
