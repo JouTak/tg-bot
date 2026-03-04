@@ -51,6 +51,7 @@ class Task(Base):
     labels = relationship("TaskLabel", back_populates="task", cascade="all, delete-orphan")
     reminders = relationship("DeadlineReminder", back_populates="task", cascade="all, delete-orphan")
     attachments = relationship("TaskAttachment", back_populates="task", cascade="all, delete-orphan")
+    comments = relationship("TaskComment", back_populates="task", cascade="all, delete-orphan")
 
 
 class TaskAssignee(Base):
@@ -114,3 +115,11 @@ class TaskAttachment(Base):
     file_id = Column(Integer, primary_key=True)
 
     task = relationship("Task", back_populates="attachments")
+
+class TaskComment(Base):
+    __tablename__ = "task_comments"
+
+    card_id = Column(Integer, ForeignKey("tasks.card_id"), primary_key=True)
+    comment_id = Column(Integer, primary_key=True)
+
+    task = relationship("Task", back_populates="comments")

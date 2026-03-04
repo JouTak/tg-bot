@@ -16,6 +16,7 @@ from source.db.repos.tasks import (
     get_task_stats_map, upsert_task_stats,
     get_task_labels, save_task_label, delete_task_label,
     get_task_attachments, save_task_attachment, delete_task_attachment,
+    get_task_comments, save_task_comment, delete_task_comment,
     delete_task_full
 )
 from source.app_logging import logger, is_debug
@@ -124,6 +125,7 @@ def poll_new_tasks():
     MSK = timezone(timedelta(hours=3))
     archive_threshold = timedelta(days=ARCHIVE_AFTER_DAYS)
     while True:
+        start = time.time()
         try:
             logger.info(f"CLOUD: Начинается плановое получение задач")
             changes_flag = False
@@ -228,22 +230,44 @@ def poll_new_tasks():
                         for file_id in old_attachments:
                             delete_task_attachment(card_id, file_id)
 
-                        url_attachment = ''
+                        url_attachment = []
                         count_media = 1
                         for file_id in news_attachments:
                             url = get_url_attachment(id_to_path_map.get(file_id))
                             if url is not None:
-                                url_attachment += f'<a href="{url}">медиа {count_media}</a> '
+                                url_attachment.append(f'<a href="{url}/preview">медиа {count_media}</a>')
                                 count_media += 1
                             save_task_attachment(card_id, file_id)
 
+                        url_text = ' | '.join(url_attachment)
+
+                        comments_data = item.get('comments_data') or []
+
+                        id_to_info_map = {comm['comment_id']: {'author': comm['author'], 'message': comm['message']} for comm in comments_data}
+                        comments_api = set(id_to_info_map.keys())
+                        comments_db = get_task_comments(card_id)
+                        news_comments = comments_api - comments_db
+                        old_comments = comments_db - comments_api
+                        for comment_id in old_comments:
+                            delete_task_comment(card_id, comment_id)
+
+                        comment_text = '\\\\\\'
+
+                        for comment_id in news_comments:
+                            data = id_to_info_map.get(comment_id)
+                            if data is not None:
+                                comment_text += f'*{data.get('author')}:* {data.get('message')}\n'
+                            save_task_comment(card_id, comment_id)
+
+                        if comment_text[-1] == '\n': comment_text = comment_text[:-1]
+                        comment_text += "///\n"
 
                         kb = InlineKeyboardMarkup()
                         kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                         if inc_comments > 0:
                             send_log(
                                 "💬 Новые комментарии:" + "\n"
-                                                          f"{inc_comments} в «{item['title']}»",
+                                                          f"{inc_comments} в «{item['title']}»\n{comment_text}",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
@@ -258,7 +282,7 @@ def poll_new_tasks():
                         if inc_attachments > 0:
                             send_log(
                                 "📎 Новые вложения:" + "\n"
-                                                       f"{inc_attachments} в «{item['title']}»\n{url_attachment}",
+                                                       f"{inc_attachments} в «{item['title']}»\n{url_text}",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
@@ -400,4 +424,6 @@ def poll_new_tasks():
         except Exception as e:
             logger.error(f"CLOUD: ошибка плановой обработки задач — {e}")
             logger.debug(traceback.format_exc())
+        end = time.time()
+        print("Время выполнения:", end - start)
         time.sleep(POLL_INTERVAL)

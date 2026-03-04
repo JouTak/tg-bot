@@ -37,7 +37,7 @@ COMMIT_HASH = _detect_commit()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 BASE_URL = os.getenv("BASE_URL")
-OCS_SHARE_URL = os.getenv("OCS_SHARE_URL")
+OCS_BASE_URL = os.getenv("OCS_BASE_URL")
 
 USERNAME = os.getenv("NEXTCLOUD_USER")
 PASSWORD = os.getenv("NEXTCLOUD_PASS")

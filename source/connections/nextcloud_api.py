@@ -11,7 +11,7 @@ from requests.exceptions import RequestException, ConnectionError, Timeout
 from requests.auth import HTTPBasicAuth
 
 from source.app_logging import logger
-from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, POLL_INTERVAL, OCS_SHARE_URL
+from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, POLL_INTERVAL, OCS_BASE_URL
 
 
 def in_done_stack(card: dict):
@@ -159,10 +159,25 @@ def _parse_done_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional
 
 def get_url_attachment(path):
     body = {'path': path, 'shareType': 3}
-    attach = requests.post(f"{OCS_SHARE_URL}/shares?format=json", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), json=body)
+    attach = requests.post(f"{OCS_BASE_URL}/files_sharing/api/v1/shares?format=json", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), json=body)
     attach.raise_for_status()
     attachment_url = attach.json()
     return attachment_url.get('ocs', {}).get('data', {}).get('url')
+
+def get_comments(card_id):
+    comm = requests.get(f"{OCS_BASE_URL}/deck/api/v1/cards/{card_id}/comments?format=json", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
+    comm.raise_for_status()
+    comments = comm.json().get('ocs', {}).get('data', {})
+    result = [
+        {
+            'comment_id': comment.get('id'),
+            'author': comment.get('actorDisplayName'),
+            'message': comment.get('message')
+        }
+        for comment in comments
+    ]
+    return result or None
+
 
 def get_board_title(board_id):
     """
@@ -320,6 +335,8 @@ def fetch_all_tasks():
 
                         attachments_data = _get_list_attachments(board_id, stack_id, card['id'])
 
+                        comments_data = get_comments(card['id'])
+
                         labels = [
                             l.get('title', '')
                             for l in (card.get('labels') or [])
@@ -346,7 +363,8 @@ def fetch_all_tasks():
                             'etag': etag,
                             'lastModified': int(lastModified),
                             'labels': labels,
-                            'attachments_data': attachments_data
+                            'attachments_data': attachments_data,
+                            'comments_data': comments_data
                         })
 
         except (RequestException, ConnectionError, Timeout,

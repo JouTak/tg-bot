@@ -261,6 +261,43 @@ def get_task_attachments(card_id):
     conn.close()
     return set(row[0] for row in rows)
 
+def save_task_comment(card_id, comment_id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT IGNORE INTO task_comments
+          (card_id, comment_id)
+        VALUES (%s, %s)
+        """,
+        (card_id, comment_id)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def delete_task_comment(card_id, comment_id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        DELETE IGNORE FROM task_comments
+        WHERE card_id = %s AND comment_id = %s
+        """,
+        (card_id, comment_id)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def get_task_comments(card_id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT comment_id FROM task_comments WHERE card_id = %s", (card_id,))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return set(row[0] for row in rows)
 
 def delete_task_full(card_id):
     """
