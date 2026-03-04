@@ -11,7 +11,7 @@ from requests.exceptions import RequestException, ConnectionError, Timeout
 from requests.auth import HTTPBasicAuth
 
 from source.app_logging import logger
-from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, POLL_INTERVAL
+from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, POLL_INTERVAL, OCS_SHARE_URL
 
 
 def in_done_stack(card: dict):
@@ -55,6 +55,23 @@ def _extract_counts(card: dict) -> Tuple[int, int]:
         atts = card.get("attachmentsCount", 0)
     return int(comments or 0), int(atts or 0)
 
+def _get_list_attachments(board_id, stack_id, card_id):
+    attachs = requests.get(
+                            f"{BASE_URL}/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/attachments?details=true",
+                            headers=HEADERS,
+                            auth=HTTPBasicAuth(USERNAME, PASSWORD),
+                        )
+    attachs.raise_for_status()
+    attachments = attachs.json()
+    attachments_data = [
+            {
+                'file_id': attachment.get('extendedData', {}).get('fileid'),
+                'path': attachment.get('extendedData', {}).get('path')
+            }
+            for attachment in attachments
+            ]
+
+    return attachments_data or None
 
 def _parse_due_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional[datetime]:
     """
@@ -140,6 +157,12 @@ def _parse_done_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional
 
     return _parse_due_utc_naive(value, card_id=card_id)
 
+def get_url_attachment(path):
+    body = {'path': path, 'shareType': 3}
+    attach = requests.post(f"{OCS_SHARE_URL}/shares?format=json", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), json=body)
+    attach.raise_for_status()
+    attachment_url = attach.json()
+    return attachment_url.get('ocs', {}).get('data', {}).get('url')
 
 def get_board_title(board_id):
     """
@@ -295,6 +318,8 @@ def fetch_all_tasks():
                                 datetime.now() - datetime.fromtimestamp(card['lastModified'])
                         ).total_seconds()
 
+                        attachments_data = _get_list_attachments(board_id, stack_id, card['id'])
+
                         labels = [
                             l.get('title', '')
                             for l in (card.get('labels') or [])
@@ -321,6 +346,7 @@ def fetch_all_tasks():
                             'etag': etag,
                             'lastModified': int(lastModified),
                             'labels': labels,
+                            'attachments_data': attachments_data
                         })
 
         except (RequestException, ConnectionError, Timeout,
