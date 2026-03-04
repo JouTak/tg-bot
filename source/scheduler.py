@@ -223,20 +223,20 @@ def poll_new_tasks():
 
                         attachments_api = set(id_to_path_map.keys())
                         attachments_db = get_task_attachments(card_id)
-                        new_attachments = attachments_api - attachments_db
+                        news_attachments = attachments_api - attachments_db
                         old_attachments = attachments_db - attachments_api
                         for file_id in old_attachments:
                             delete_task_attachment(card_id, file_id)
 
-                        url_attachment = []
-
-                        for file_id in new_attachments:
+                        url_attachment = ''
+                        count_media = 1
+                        for file_id in news_attachments:
                             url = get_url_attachment(id_to_path_map.get(file_id))
                             if url is not None:
-                                url_attachment.append(f"{url}/preview")
+                                url_attachment += f'<a href="{url}">медиа {count_media}</a> '
+                                count_media += 1
                             save_task_attachment(card_id, file_id)
 
-                        urls_text = '\n'.join(url_attachment)
 
                         kb = InlineKeyboardMarkup()
                         kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
@@ -258,7 +258,7 @@ def poll_new_tasks():
                         if inc_attachments > 0:
                             send_log(
                                 "📎 Новые вложения:" + "\n"
-                                                       f"{inc_attachments} в «{item['title']}»\n {urls_text}",
+                                                       f"{inc_attachments} в «{item['title']}»\n{url_attachment}",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
