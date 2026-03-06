@@ -8,13 +8,15 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from source.config import POLL_INTERVAL, EXCLUDED_CARD_IDS, ARCHIVE_AFTER_DAYS
 from source.connections.sender import send_message_limited
-from source.connections.nextcloud_api import fetch_all_tasks, in_done_stack, archive_card
+from source.connections.nextcloud_api import fetch_all_tasks, in_done_stack, archive_card, get_url_attachment
 from source.db.repos.users import get_user_map
 from source.db.repos.tasks import (
     get_saved_tasks, save_task_to_db, update_task_in_db,
     get_task_assignees, save_task_assignee, delete_task_assignee,
     get_task_stats_map, upsert_task_stats,
     get_task_labels, save_task_label, delete_task_label,
+    get_task_attachments, save_task_attachment, delete_task_attachment,
+    get_task_comments, save_task_comment, delete_task_comment,
     delete_task_full
 )
 from source.app_logging import logger, is_debug
@@ -32,9 +34,9 @@ def change_description(old_description, new_description):
 
     Возвращает текст различий для уведомления.
     """
-    result_txt = '';
-    add_text = '';
-    remove_text = '';
+    result_txt = ''
+    add_text = ''
+    remove_text = ''
     change_text = ''
     split_pattern = (
         r'(?:(?<=[.!?])(?<!\d.)\s+|\n)(?=[А-ЯA-Z0-9])'
@@ -213,12 +215,59 @@ def poll_new_tasks():
 
                     # === Уведомления о комментариях/вложениях ТОЛЬКО если не в исключениях ===
                     if _should_notify(card_id):
+
+                        # РАБОТА С КОММЕНТАРИЯМИ И ВЛОЖЕНИЯМИ ТУТ
+                        if inc_attachments != 0:
+                            attachments_data = item.get('attachments_data') or []
+
+                            id_to_path_map = {att['file_id']: att['path'] for att in attachments_data}
+
+                            attachments_api = set(id_to_path_map.keys())
+                            attachments_db = get_task_attachments(card_id)
+                            news_attachments = attachments_api - attachments_db
+                            old_attachments = attachments_db - attachments_api
+                            for file_id in old_attachments:
+                                delete_task_attachment(card_id, file_id)
+
+                            url_attachment = []
+                            count_media = 1
+                            for file_id in news_attachments:
+                                url = get_url_attachment(id_to_path_map.get(file_id))
+                                if url is not None:
+                                    url_attachment.append(f'<a href="{url}/preview">медиа {count_media}</a>')
+                                    count_media += 1
+                                save_task_attachment(card_id, file_id)
+
+                            url_text = ' | '.join(url_attachment)
+
+                        if inc_comments != 0:
+                            comments_data = item.get('comments_data') or []
+
+                            id_to_info_map = {comm['comment_id']: {'author': comm['author'], 'message': comm['message']} for comm in comments_data}
+                            comments_api = set(id_to_info_map.keys())
+                            comments_db = get_task_comments(card_id)
+                            news_comments = comments_api - comments_db
+                            old_comments = comments_db - comments_api
+                            for comment_id in old_comments:
+                                delete_task_comment(card_id, comment_id)
+
+                            comment_text = '\\\\\\'
+
+                            for comment_id in news_comments:
+                                data = id_to_info_map.get(comment_id)
+                                if data is not None:
+                                    comment_text += f'*{data.get('author')}:* {data.get('message')}\n'
+                                save_task_comment(card_id, comment_id)
+
+                            if comment_text[-1] == '\n': comment_text = comment_text[:-1]
+                            comment_text += "///\n"
+
                         kb = InlineKeyboardMarkup()
                         kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                         if inc_comments > 0:
                             send_log(
                                 "💬 Новые комментарии:" + "\n"
-                                                          f"{inc_comments} в «{item['title']}»",
+                                                          f"{inc_comments} в «{item['title']}»\n{comment_text}",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
@@ -233,7 +282,7 @@ def poll_new_tasks():
                         if inc_attachments > 0:
                             send_log(
                                 "📎 Новые вложения:" + "\n"
-                                                       f"{inc_attachments} в «{item['title']}»",
+                                                       f"{inc_attachments} в «{item['title']}»\n{url_text}",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )

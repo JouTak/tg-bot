@@ -11,8 +11,8 @@ from requests.exceptions import RequestException, ConnectionError, Timeout
 from requests.auth import HTTPBasicAuth
 
 from source.app_logging import logger
-from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, POLL_INTERVAL
-
+from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, POLL_INTERVAL, OCS_BASE_URL
+from source.db.repos.tasks import get_etag_count, get_task_attachments, get_task_comments
 
 def in_done_stack(card: dict):
     board_id = card['board_id']
@@ -55,6 +55,23 @@ def _extract_counts(card: dict) -> Tuple[int, int]:
         atts = card.get("attachmentsCount", 0)
     return int(comments or 0), int(atts or 0)
 
+def _get_list_attachments(board_id, stack_id, card_id):
+    attachs = requests.get(
+                            f"{BASE_URL}/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/attachments?details=true",
+                            headers=HEADERS,
+                            auth=HTTPBasicAuth(USERNAME, PASSWORD),
+                        )
+    attachs.raise_for_status()
+    attachments = attachs.json()
+    attachments_data = [
+            {
+                'file_id': attachment.get('extendedData', {}).get('fileid'),
+                'path': attachment.get('extendedData', {}).get('path')
+            }
+            for attachment in attachments
+            ]
+
+    return attachments_data or None
 
 def _parse_due_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional[datetime]:
     """
@@ -139,6 +156,29 @@ def _parse_done_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional
         return datetime.utcnow().replace(microsecond=0)
 
     return _parse_due_utc_naive(value, card_id=card_id)
+
+def get_url_attachment(path):
+    body = {'path': path, 'shareType': 3}
+    attach = requests.post(f"{OCS_BASE_URL}/files_sharing/api/v1/shares?format=json", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), json=body)
+    if attach.status_code == 404:
+        return None
+    attach.raise_for_status()
+    attachment_url = attach.json()
+    return attachment_url.get('ocs', {}).get('data', {}).get('url')
+
+def get_comments(card_id):
+    comm = requests.get(f"{OCS_BASE_URL}/deck/api/v1/cards/{card_id}/comments?format=json", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
+    comm.raise_for_status()
+    comments = comm.json().get('ocs', {}).get('data', {})
+    result = [
+        {
+            'comment_id': comment.get('id'),
+            'author': comment.get('actorDisplayName'),
+            'message': comment.get('message')
+        }
+        for comment in comments
+    ]
+    return result or None
 
 
 def get_board_title(board_id):
@@ -291,9 +331,19 @@ def fetch_all_tasks():
                         done_raw = card.get('done')
                         done = _parse_done_utc_naive(done_raw, card_id=card.get('id'))
                         etag = card.get('ETag') or card.get('Etag') or card.get('etag')
+                        old_etag, old_comments_count, old_attachments_count = get_etag_count(card['id'])
                         lastModified = (
                                 datetime.now() - datetime.fromtimestamp(card['lastModified'])
                         ).total_seconds()
+                        attachments_data = get_task_attachments(card['id'])
+                        comments_data = get_task_comments(card['id'])
+
+                        if old_etag != etag:
+                            if old_comments_count != comments_count:
+                                comments_data = get_comments(card['id'])
+
+                            if old_attachments_count != attachments_count:
+                                attachments_data = _get_list_attachments(board_id, stack_id, card['id'])
 
                         labels = [
                             l.get('title', '')
@@ -321,6 +371,8 @@ def fetch_all_tasks():
                             'etag': etag,
                             'lastModified': int(lastModified),
                             'labels': labels,
+                            'attachments_data': attachments_data,
+                            'comments_data': comments_data
                         })
 
         except (RequestException, ConnectionError, Timeout,
