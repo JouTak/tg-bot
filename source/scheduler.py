@@ -217,49 +217,50 @@ def poll_new_tasks():
                     if _should_notify(card_id):
 
                         # РАБОТА С КОММЕНТАРИЯМИ И ВЛОЖЕНИЯМИ ТУТ
+                        if inc_attachments != 0:
+                            attachments_data = item.get('attachments_data') or []
 
-                        attachments_data = item.get('attachments_data') or []
+                            id_to_path_map = {att['file_id']: att['path'] for att in attachments_data}
 
-                        id_to_path_map = {att['file_id']: att['path'] for att in attachments_data}
+                            attachments_api = set(id_to_path_map.keys())
+                            attachments_db = get_task_attachments(card_id)
+                            news_attachments = attachments_api - attachments_db
+                            old_attachments = attachments_db - attachments_api
+                            for file_id in old_attachments:
+                                delete_task_attachment(card_id, file_id)
 
-                        attachments_api = set(id_to_path_map.keys())
-                        attachments_db = get_task_attachments(card_id)
-                        news_attachments = attachments_api - attachments_db
-                        old_attachments = attachments_db - attachments_api
-                        for file_id in old_attachments:
-                            delete_task_attachment(card_id, file_id)
+                            url_attachment = []
+                            count_media = 1
+                            for file_id in news_attachments:
+                                url = get_url_attachment(id_to_path_map.get(file_id))
+                                if url is not None:
+                                    url_attachment.append(f'<a href="{url}/preview">медиа {count_media}</a>')
+                                    count_media += 1
+                                save_task_attachment(card_id, file_id)
 
-                        url_attachment = []
-                        count_media = 1
-                        for file_id in news_attachments:
-                            url = get_url_attachment(id_to_path_map.get(file_id))
-                            if url is not None:
-                                url_attachment.append(f'<a href="{url}/preview">медиа {count_media}</a>')
-                                count_media += 1
-                            save_task_attachment(card_id, file_id)
+                            url_text = ' | '.join(url_attachment)
 
-                        url_text = ' | '.join(url_attachment)
+                        if inc_comments != 0:
+                            comments_data = item.get('comments_data') or []
 
-                        comments_data = item.get('comments_data') or []
+                            id_to_info_map = {comm['comment_id']: {'author': comm['author'], 'message': comm['message']} for comm in comments_data}
+                            comments_api = set(id_to_info_map.keys())
+                            comments_db = get_task_comments(card_id)
+                            news_comments = comments_api - comments_db
+                            old_comments = comments_db - comments_api
+                            for comment_id in old_comments:
+                                delete_task_comment(card_id, comment_id)
 
-                        id_to_info_map = {comm['comment_id']: {'author': comm['author'], 'message': comm['message']} for comm in comments_data}
-                        comments_api = set(id_to_info_map.keys())
-                        comments_db = get_task_comments(card_id)
-                        news_comments = comments_api - comments_db
-                        old_comments = comments_db - comments_api
-                        for comment_id in old_comments:
-                            delete_task_comment(card_id, comment_id)
+                            comment_text = '\\\\\\'
 
-                        comment_text = '\\\\\\'
+                            for comment_id in news_comments:
+                                data = id_to_info_map.get(comment_id)
+                                if data is not None:
+                                    comment_text += f'*{data.get('author')}:* {data.get('message')}\n'
+                                save_task_comment(card_id, comment_id)
 
-                        for comment_id in news_comments:
-                            data = id_to_info_map.get(comment_id)
-                            if data is not None:
-                                comment_text += f'*{data.get('author')}:* {data.get('message')}\n'
-                            save_task_comment(card_id, comment_id)
-
-                        if comment_text[-1] == '\n': comment_text = comment_text[:-1]
-                        comment_text += "///\n"
+                            if comment_text[-1] == '\n': comment_text = comment_text[:-1]
+                            comment_text += "///\n"
 
                         kb = InlineKeyboardMarkup()
                         kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))

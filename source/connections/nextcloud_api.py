@@ -12,7 +12,7 @@ from requests.auth import HTTPBasicAuth
 
 from source.app_logging import logger
 from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, POLL_INTERVAL, OCS_BASE_URL
-from source.db.repos.tasks import get_etag_count
+from source.db.repos.tasks import get_etag_count, get_task_attachments, get_task_comments
 
 def in_done_stack(card: dict):
     board_id = card['board_id']
@@ -335,8 +335,8 @@ def fetch_all_tasks():
                         lastModified = (
                                 datetime.now() - datetime.fromtimestamp(card['lastModified'])
                         ).total_seconds()
-                        attachments_data = None
-                        comments_data = None
+                        attachments_data = get_task_attachments(card['id'])
+                        comments_data = get_task_comments(card['id'])
 
                         if old_etag != etag:
                             if old_comments_count != comments_count:

@@ -308,6 +308,8 @@ def delete_task_full(card_id):
     cursor = conn.cursor()
     cursor.execute("DELETE FROM deadline_reminders WHERE card_id = %s", (card_id,))
     cursor.execute("DELETE FROM task_labels WHERE card_id = %s", (card_id,))
+    cursor.execute("DELETE FROM task_comments WHERE card_id = %s", (card_id,))
+    cursor.execute("DELETE FROM task_attachments WHERE card_id = %s", (card_id,))
     cursor.execute("DELETE FROM task_assignees WHERE card_id = %s", (card_id,))
     cursor.execute("DELETE FROM task_stats WHERE card_id = %s", (card_id,))
     cursor.execute("DELETE FROM tasks WHERE card_id = %s", (card_id,))
@@ -325,6 +327,9 @@ def get_etag_count(card_id):
                     WHERE tasks.card_id = %s
                 """, (card_id,))
     data = cursor.fetchone()
+    if data is None:
+        return None, None, None
+
     cursor.close()
     conn.close()
     return list(data)
