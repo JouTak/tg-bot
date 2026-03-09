@@ -221,6 +221,83 @@ def get_task_labels(card_id):
     conn.close()
     return set(row[0] for row in rows)
 
+def save_task_attachment(card_id, file_id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT IGNORE INTO task_attachments
+          (card_id, file_id)
+        VALUES (%s, %s)
+        """,
+        (card_id, file_id)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def delete_task_attachment(card_id, file_id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        DELETE IGNORE FROM task_attachments
+        WHERE card_id = %s AND file_id = %s
+        """,
+        (card_id, file_id)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def get_task_attachments(card_id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT file_id FROM task_attachments WHERE card_id = %s", (card_id,))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return set(row[0] for row in rows)
+
+def save_task_comment(card_id, comment_id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT IGNORE INTO task_comments
+          (card_id, comment_id)
+        VALUES (%s, %s)
+        """,
+        (card_id, comment_id)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def delete_task_comment(card_id, comment_id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        DELETE IGNORE FROM task_comments
+        WHERE card_id = %s AND comment_id = %s
+        """,
+        (card_id, comment_id)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def get_task_comments(card_id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT comment_id FROM task_comments WHERE card_id = %s", (card_id,))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return set(row[0] for row in rows)
 
 def delete_task_full(card_id):
     """
@@ -231,9 +308,28 @@ def delete_task_full(card_id):
     cursor = conn.cursor()
     cursor.execute("DELETE FROM deadline_reminders WHERE card_id = %s", (card_id,))
     cursor.execute("DELETE FROM task_labels WHERE card_id = %s", (card_id,))
+    cursor.execute("DELETE FROM task_comments WHERE card_id = %s", (card_id,))
+    cursor.execute("DELETE FROM task_attachments WHERE card_id = %s", (card_id,))
     cursor.execute("DELETE FROM task_assignees WHERE card_id = %s", (card_id,))
     cursor.execute("DELETE FROM task_stats WHERE card_id = %s", (card_id,))
     cursor.execute("DELETE FROM tasks WHERE card_id = %s", (card_id,))
     conn.commit()
     cursor.close()
     conn.close()
+
+def get_etag_count(card_id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+                    SELECT tasks.etag, task_stats.comments_count, task_stats.attachments_count 
+                    FROM tasks 
+                    JOIN task_stats ON tasks.card_id = task_stats.card_id 
+                    WHERE tasks.card_id = %s
+                """, (card_id,))
+    data = cursor.fetchone()
+    if data is None:
+        return None, None, None
+
+    cursor.close()
+    conn.close()
+    return list(data)
