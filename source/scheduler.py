@@ -256,7 +256,7 @@ def poll_new_tasks():
                             for comment_id in news_comments:
                                 data = id_to_info_map.get(comment_id)
                                 if data is not None:
-                                    comment_text += f'*{data.get('author')}:* {data.get('message')}\n'
+                                    comment_text += f"*{data.get('author')}:* {data.get('message')}\n"
                                 save_task_comment(card_id, comment_id)
 
                             if comment_text[-1] == '\n': comment_text = comment_text[:-1]
