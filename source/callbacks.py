@@ -52,6 +52,7 @@ def handle_card_move(call):
 @bot.callback_query_handler(func=lambda call: call.data == "check")
 def check_login(call):
     poll_token = get_token(call.from_user.id)
+    print(poll_token)
     endpoint = WEB_APP_URL + "/login/v2/poll"
     headers = {
         'User-Agent': 'ITMOCraftBot',
@@ -59,6 +60,7 @@ def check_login(call):
     }
     try:
         response = requests.post(endpoint, data={'token': poll_token}, headers=headers)
+        response.raise_for_status()
         if response.status_code == 404:
             bot.answer_callback_query(call.id, "Вы еще не подтвердили вход в браузере!", show_alert=True)
         elif response.status_code == 200:
@@ -69,7 +71,6 @@ def check_login(call):
             save_login_to_db_with_token(call.from_user.id, nc_login, nc_token)
 
             delete_login_token(call.from_user.id)
-
             bot.edit_message_text(f"✅ Успешно! Аккаунт {nc_login} привязан.",
                                   call.message.chat.id,
                                   call.message.message_id)
@@ -77,4 +78,4 @@ def check_login(call):
             send_message_limited(call.message.chat.id, "Произошла ошибка или срок действия ссылки истек.")
 
     except Exception as e:
-        pass
+        bot.answer_callback_query(call.id, "Произошла ошибка или срок действия ссылки истек.", show_alert=True)

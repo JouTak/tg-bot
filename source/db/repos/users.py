@@ -37,7 +37,7 @@ def save_login_to_db_with_token(tg_id, nc_login, nc_token):
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO users (tg_id, nc_login, nc_token) VALUES (%s, %s, %s) "
-        "ON DUPLICATE KEY UPDATE nc_login = VALUES(nc_login)"
+        "ON DUPLICATE KEY UPDATE nc_login = VALUES(nc_login),"
         "nc_token = VALUES(nc_token)",
         (tg_id, nc_login, nc_token)
     )
@@ -99,6 +99,15 @@ def get_token(id):
     conn = get_mysql_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT token FROM login_token WHERE tg_id = %s", (id,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return row[0] if row else None
+
+def get_nc_token(id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT nc_token FROM users WHERE tg_id = %s", (id,))
     row = cursor.fetchone()
     cursor.close()
     conn.close()
