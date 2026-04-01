@@ -1,14 +1,15 @@
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import (InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo)
 
 from source.app_logging import logger
 from source.connections.bot_factory import bot
 from source.connections.sender import send_message_limited
-from source.db.repos.users import get_login_by_tg_id, save_login_to_db
+from source.db.repos.users import get_login_by_tg_id, save_login_to_db, save_login_token, delete_login_token
 from source.db.repos.tasks import save_task_to_db, get_tasks_from_users
 from source.db.repos.boards import save_board_topic
 from source.connections.nextcloud_api import fetch_user_tasks, get_board_title
-from source.config import COMMIT_HASH
+from source.config import COMMIT_HASH, WEB_APP_URL
 
+from requests import post
 
 @bot.message_handler(commands=['start'])
 def start_handler(message):
@@ -21,8 +22,28 @@ def start_handler(message):
         send_message_limited(chat_id, "Эта команда может использоваться только в лс с ботом",
                              message_thread_id=message.message_thread_id)
         return
-    if get_login_by_tg_id(message.chat.id) == None:
-        send_message_limited(chat_id, "Введите свой логин cloud.joutak.ru:")
+    if get_login_by_tg_id(message.chat.id) != None: # переделать проверку
+        markup = InlineKeyboardMarkup()
+        headers = {
+            'User-Agent': 'ITMOCraftBot',
+            'Accept': 'application/json'
+        }
+        init_resp = post(WEB_APP_URL + "/index.php/login/v2", headers=headers)
+        init_resp.raise_for_status()
+        init_resp = init_resp.json()
+        login_url = init_resp['login']
+        poll_token = init_resp['poll']['token']
+
+        delete_login_token(message.from_user.id)
+
+        save_login_token(message.from_user.id, poll_token)
+
+        web_app = WebAppInfo(login_url)
+        btn = InlineKeyboardButton("Подключить Cloud", web_app=web_app)
+        btn_check = InlineKeyboardButton("Подтвердить вход ✅", callback_data=f"check")
+        markup.add(btn)
+        markup.add(btn_check)
+        send_message_limited(chat_id, "Введите свой логин:", reply_markup=markup)
     else:
         send_message_limited(chat_id, "Ваш логин уже имеется в базе данных. "
                                       "Если его необходимо сменить - обратитесь к администратору.")

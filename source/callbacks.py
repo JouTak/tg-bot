@@ -2,8 +2,9 @@ import requests
 from requests.auth import HTTPBasicAuth
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from source.connections.bot_factory import bot
-from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS
-
+from source.db.repos.users import delete_login_token, get_token, save_login_to_db_with_token
+from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, WEB_APP_URL
+from source.connections.sender import send_message_limited
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("move:"))
 def handle_card_move(call):
@@ -47,3 +48,33 @@ def handle_card_move(call):
         ))
     bot.answer_callback_query(call.id, "Перемещено")
     bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=new_kb)
+
+@bot.callback_query_handler(func=lambda call: call.data == "check")
+def check_login(call):
+    poll_token = get_token(call.from_user.id)
+    endpoint = WEB_APP_URL + "/login/v2/poll"
+    headers = {
+        'User-Agent': 'ITMOCraftBot',
+        'Accept': 'application/json'
+    }
+    try:
+        response = requests.post(endpoint, data={'token': poll_token}, headers=headers)
+        if response.status_code == 404:
+            bot.answer_callback_query(call.id, "Вы еще не подтвердили вход в браузере!", show_alert=True)
+        elif response.status_code == 200:
+            auth_data = response.json()
+            nc_login = auth_data['loginName']
+            nc_token = auth_data['appPassword']
+
+            save_login_to_db_with_token(call.from_user.id, nc_login, nc_token)
+
+            delete_login_token(call.from_user.id)
+
+            bot.edit_message_text(f"✅ Успешно! Аккаунт {nc_login} привязан.",
+                                  call.message.chat.id,
+                                  call.message.message_id)
+        else:
+            send_message_limited(call.message.chat.id, "Произошла ошибка или срок действия ссылки истек.")
+
+    except Exception as e:
+        pass
