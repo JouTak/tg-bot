@@ -12,6 +12,7 @@ class User(Base):
 
     tg_id = Column(BigInteger, primary_key=True)
     nc_login = Column(String(100), nullable=False)
+    nc_token = Column(String(100), nullable=True)
 
 class Task(Base):
     __tablename__ = "tasks"
@@ -123,3 +124,9 @@ class TaskComment(Base):
     comment_id = Column(Integer, primary_key=True)
 
     task = relationship("Task", back_populates="comments")
+
+class NextCloudLogin(Base):
+    __tablename__ = "login_token"
+
+    tg_id = Column(BigInteger, primary_key=True)
+    token = Column(String(128), nullable=False)

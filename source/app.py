@@ -13,6 +13,7 @@ import source.handlers  # noqa: F401
 import source.callbacks  # noqa: F401
 from source.deadlines import poll_deadlines
 from source.migrations.init_db import init_db
+from source.migrations.migration import auto_migrate
 
 
 def _get(obj, name, default=None):
@@ -156,6 +157,7 @@ def run():
     # migrations
     logger.info(f"Миграция базы данных.")
     init_db()
+    auto_migrate()
 
     backoff = 5.0
     while True:
