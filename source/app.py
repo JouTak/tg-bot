@@ -2,16 +2,18 @@ import socket
 import http.client
 import threading
 import time
+from urllib.parse import urljoin
 
 from source.app_logging import logger, is_debug
 from source.scheduler import poll_new_tasks
 from source.connections.bot_factory import bot
 from source.connections.sender import send_message_limited
-from source.config import FORUM_CHAT_ID, BOT_START_MESSAGE_TOPIC_ID, COMMIT_HASH
+from source.config import FORUM_CHAT_ID, BOT_START_MESSAGE_TOPIC_ID, COMMIT_HASH, COMMIT_REPO_URL
 import source.handlers  # noqa: F401
 import source.callbacks  # noqa: F401
 from source.deadlines import poll_deadlines
 from source.migrations.init_db import init_db
+from source.migrations.migration import auto_migrate
 
 
 def _get(obj, name, default=None):
@@ -87,6 +89,18 @@ def _brief(exc: BaseException) -> str:
     return exc.__class__.__name__
 
 
+def _commit_url(repo_url: str, commit_hash: str) -> str | None:
+    """
+    Возвращает URL к коммиту, если repo_url выглядит как поддерживаемый хост.
+    Поддерживаются GitHub и GitLab (и любые хосты, где URL выглядит как <repo>/commit/<hash>).
+    """
+    if not repo_url:
+        return None
+    repo_url = repo_url.rstrip('/') + '/'
+    # Общий шаблон: <repo_url>commit/<hash>
+    return urljoin(repo_url, f'commit/{commit_hash}')
+
+
 def _notify_startup():
     """
     Отправляет в форум-топик сообщение о запуске бота.
@@ -96,15 +110,23 @@ def _notify_startup():
     """
     if BOT_START_MESSAGE_TOPIC_ID is None:
         return
-    if COMMIT_HASH and COMMIT_HASH != "unknown":
-        text = f"Бот перезапущен на коммите `{COMMIT_HASH}`!"
+
+    if COMMIT_HASH and COMMIT_HASH.lower() != "unknown" and COMMIT_REPO_URL:
+        short = COMMIT_HASH[:7]
+        url = _commit_url(COMMIT_REPO_URL, COMMIT_HASH)
+        text = f'Бот перезапущен на коммите <a href="{url}">{short}</a>!'
+        parse_mode = "HTML"
     else:
         text = "Бот перезапущен на локальном билде!"
+        parse_mode = None
+
     try:
         send_message_limited(
             FORUM_CHAT_ID,
             text,
             message_thread_id=BOT_START_MESSAGE_TOPIC_ID,
+            parse_mode=parse_mode,
+            # disable_web_page_preview=True,    # дисса сказал с ним сделать
         )
     except Exception as e:
         logger.warning(f"Не удалось отправить уведомление о старте: {e}")
@@ -135,6 +157,7 @@ def run():
     # migrations
     logger.info(f"Миграция базы данных.")
     init_db()
+    auto_migrate()
 
     backoff = 5.0
     while True:

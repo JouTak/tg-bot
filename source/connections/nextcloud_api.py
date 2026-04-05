@@ -157,14 +157,95 @@ def _parse_done_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional
 
     return _parse_due_utc_naive(value, card_id=card_id)
 
+def _candidate_share_paths(path: Optional[str]) -> list[str]:
+    """
+    Deck иногда отдает путь не в формате, который понимает OCS shares API
+    для текущего сервисного пользователя (например, путь владельца файла).
+    Возвращаем набор кандидатов, которые пробуем по очереди.
+    """
+    if not path:
+        return []
+
+    normalized = path.strip()
+    if not normalized:
+        return []
+
+    candidates = []
+
+    def _add(v: Optional[str]):
+        if not v:
+            return
+        if not v.startswith("/"):
+            v = "/" + v
+        if v not in candidates:
+            candidates.append(v)
+
+    _add(normalized)
+
+    m = re.match(r"^/?files/[^/]+/(.+)$", normalized)
+    if m:
+        _add("/" + m.group(1))
+
+    m = re.match(r"^/?remote\.php/dav/files/[^/]+/(.+)$", normalized)
+    if m:
+        _add("/" + m.group(1))
+
+    return candidates
+
+
+def _extract_share_url(payload: dict) -> Optional[str]:
+    return payload.get('ocs', {}).get('data', {}).get('url')
+
+
 def get_url_attachment(path):
-    body = {'path': path, 'shareType': 3}
-    attach = requests.post(f"{OCS_BASE_URL}/files_sharing/api/v1/shares?format=json", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), json=body)
-    if attach.status_code == 404:
-        return None
-    attach.raise_for_status()
-    attachment_url = attach.json()
-    return attachment_url.get('ocs', {}).get('data', {}).get('url')
+    ocs_headers = {'OCS-APIRequest': 'true'}
+    share_url = f"{OCS_BASE_URL}/files_sharing/api/v1/shares?format=json"
+
+    for candidate_path in _candidate_share_paths(path):
+        body = {'path': candidate_path, 'shareType': 3}
+        try:
+            attach = requests.post(
+                share_url,
+                headers=ocs_headers,
+                auth=HTTPBasicAuth(USERNAME, PASSWORD),
+                data=body,
+                timeout=20,
+            )
+        except RequestException as exc:
+            logger.warning(f"CLOUD: share create failed for path='{candidate_path}': {exc}")
+            continue
+
+        if attach.status_code in (403, 404):
+            logger.info(f"CLOUD: cannot share path='{candidate_path}' (HTTP {attach.status_code})")
+            continue
+
+        if attach.status_code >= 500:
+            logger.warning(f"CLOUD: share create failed for path='{candidate_path}' (HTTP {attach.status_code})")
+            continue
+
+        if attach.status_code >= 400:
+            logger.info(f"CLOUD: share create rejected for path='{candidate_path}' (HTTP {attach.status_code})")
+            continue
+
+        try:
+            attachment_payload = attach.json()
+        except ValueError:
+            logger.warning(f"CLOUD: share create returned non-JSON for path='{candidate_path}'")
+            continue
+
+        ocs_meta = attachment_payload.get('ocs', {}).get('meta', {})
+        if ocs_meta.get('statuscode') not in (100, None):
+            logger.info(
+                f"CLOUD: share create OCS error for path='{candidate_path}' "
+                f"(statuscode={ocs_meta.get('statuscode')}, message={ocs_meta.get('message')})"
+            )
+            continue
+
+        url = _extract_share_url(attachment_payload)
+        if url:
+            return url
+
+    return None
 
 def get_comments(card_id):
     comm = requests.get(f"{OCS_BASE_URL}/deck/api/v1/cards/{card_id}/comments?format=json", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
