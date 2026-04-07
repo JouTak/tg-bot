@@ -200,7 +200,6 @@ def _extract_share_url(payload: dict) -> Optional[str]:
 def get_url_attachment(path):
     ocs_headers = {'OCS-APIRequest': 'true'}
     share_url = f"{OCS_BASE_URL}/files_sharing/api/v1/shares?format=json"
-
     for candidate_path in _candidate_share_paths(path):
         body = {'path': candidate_path, 'shareType': 3}
         try:
@@ -234,13 +233,12 @@ def get_url_attachment(path):
             continue
 
         ocs_meta = attachment_payload.get('ocs', {}).get('meta', {})
-        if ocs_meta.get('statuscode') not in (100, None):
+        if ocs_meta.get('statuscode') not in (100, 200, 997, None):
             logger.info(
                 f"CLOUD: share create OCS error for path='{candidate_path}' "
                 f"(statuscode={ocs_meta.get('statuscode')}, message={ocs_meta.get('message')})"
             )
             continue
-
         url = _extract_share_url(attachment_payload)
         if url:
             return url

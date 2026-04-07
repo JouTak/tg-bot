@@ -37,7 +37,6 @@ def start_handler(message):
         delete_login_token(message.from_user.id)
 
         save_login_token(message.from_user.id, poll_token)
-        print(poll_token)
         web_app = WebAppInfo(login_url)
         btn = InlineKeyboardButton("Подключить Cloud", web_app=web_app)
         btn_check = InlineKeyboardButton("Подтвердить вход ✅", callback_data=f"check")
