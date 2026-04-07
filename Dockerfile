@@ -25,7 +25,8 @@ COPY source /app/source
 COPY alembic.ini /app/alembic.ini
 COPY alembic /app/alembic
 COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh \
+  && chown -R bot:bot /app
 
 USER bot
 
