@@ -5,6 +5,7 @@ from alembic.util.exc import CommandError
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from source.db.db import Base, DATABASE_URL
 import datetime
 
@@ -32,11 +33,14 @@ def auto_migrate():
         except CommandError as e:
             if "Can't locate revision identified by" not in str(e):
                 raise
+
             print(
                 "Обнаружена неизвестная ревизия Alembic в базе. "
-                "Сбрасываем состояние миграций и пересинхронизируемся с текущим head."
+                "Очищаем alembic_version и пересинхронизируемся с текущим head."
             )
-            command.stamp(cfg, "base")
+            if inspect(connection).has_table("alembic_version"):
+                with connection.begin():
+                    connection.execute(text("DELETE FROM alembic_version"))
             command.upgrade(cfg, "head")
         mc = MigrationContext.configure(connection)
         diff = compare_metadata(mc, Base.metadata)
