@@ -1,6 +1,7 @@
 from pathlib import Path
 from alembic.config import Config
 from alembic import command
+from alembic.util.exc import CommandError
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from sqlalchemy import create_engine
@@ -26,7 +27,17 @@ def auto_migrate():
 
     with engine.connect() as connection:
         print("Синхронизация с существующими миграциями...")
-        command.upgrade(cfg, "head")
+        try:
+            command.upgrade(cfg, "head")
+        except CommandError as e:
+            if "Can't locate revision identified by" not in str(e):
+                raise
+            print(
+                "Обнаружена неизвестная ревизия Alembic в базе. "
+                "Сбрасываем состояние миграций и пересинхронизируемся с текущим head."
+            )
+            command.stamp(cfg, "base")
+            command.upgrade(cfg, "head")
         mc = MigrationContext.configure(connection)
         diff = compare_metadata(mc, Base.metadata)
 
