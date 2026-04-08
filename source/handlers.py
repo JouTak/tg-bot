@@ -25,7 +25,7 @@ def start_handler(message):
     if (get_login_by_tg_id(message.from_user.id) == None) or (get_login_by_tg_id(message.from_user.id) != None and get_nc_token(message.from_user.id) == None):
         markup = InlineKeyboardMarkup()
         headers = {
-            'User-Agent': 'ITMOCraftBot',
+            'User-Agent': '@ITMOcraftBOT',
             'Accept': 'application/json'
         }
         init_resp = post(WEB_APP_URL + "/index.php/login/v2", headers=headers)
@@ -42,7 +42,7 @@ def start_handler(message):
         btn_check = InlineKeyboardButton("Подтвердить вход ✅", callback_data=f"check")
         markup.add(btn)
         markup.add(btn_check)
-        send_message_limited(chat_id, "Введите свой логин:", reply_markup=markup)
+        send_message_limited(chat_id, "Авторизуйтесь через клауд:", reply_markup=markup)
     else:
         send_message_limited(chat_id, "Ваш логин уже имеется в базе данных. "
                                       "Если его необходимо сменить - обратитесь к администратору.")
