@@ -19,7 +19,7 @@ def start_handler(message):
                              message_thread_id=message.message_thread_id)
         return
     else: #нужна кнопочка
-        send_message_limited(chat_id, "Этот бот создан специально для клуба ITMOcraft! Заинтересовался, вступай в команду!")
+        send_message_limited(chat_id, "Этот бот создан специально для организаторов клуба @ITMOcraft! Если ты у нас в команде, регистрируйся в боте через команду /register. \n\nИнтересует вступление в команду организаторов? Заполняй анкету: https://forms.yandex.ru/u/67773408068ff0452320c8b4!")
 
 @bot.message_handler(commands=['register'])
 def register_handler(message):
@@ -176,7 +176,7 @@ def set_board_topic_handler(message):
 def reply_comments(message):
     chat_id = message.chat.id
     if (get_login_by_tg_id(message.from_user.id) == None) or (get_login_by_tg_id(message.from_user.id) != None and get_nc_token(message.from_user.id) == None):
-        send_message_limited(chat_id, "Ты зарегистрирован старым способом и бот не может отправить твой ответ на этот комментарий. Пожалуйста, мигрируй свой аккаунт командой /register (или какая там) в лс с ботом")
+        send_message_limited(chat_id, "Бот хочет отправить ответ на эту карточку, однако не может, так как ты не зарегистрирован новым способом. Пожалуйста, зарегистрируй|мигрируй свой аккаунт командой /register в лс с ботом")
         return
 
     keyboard = message.reply_to_message.reply_markup
