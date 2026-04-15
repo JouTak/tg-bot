@@ -251,7 +251,7 @@ def poll_new_tasks():
                                 delete_task_comment(card_id, comment_id)
 
                             comment_text = '\\\\\\'
-                            new_comments = list(news_comments).sort()
+                            list(news_comments).sort()
                             for comment_id in news_comments:
                                 data = id_to_info_map.get(comment_id)
                                 if data is not None:
