@@ -13,8 +13,18 @@ from requests import post
 
 @bot.message_handler(commands=['start'])
 def start_handler(message):
+    chat_id = message.chat.id
+    if message.chat.type != "private":
+        send_message_limited(chat_id, "Эта команда может использоваться только в лс с ботом",
+                             message_thread_id=message.message_thread_id)
+        return
+    else: #нужна кнопочка
+        send_message_limited(chat_id, "Этот бот создан специально для клуба ITMOcraft! Заинтересовался, вступай в команду!")
+
+@bot.message_handler(commands=['register'])
+def register_handler(message):
     """
-    Обрабатывает команду /start.
+    Обрабатывает команду /register.
     Запрашивает логин Nextcloud, если он ещё не сохранён.
     """
     chat_id = message.chat.id
