@@ -190,8 +190,9 @@ def reply_comments(message):
     comment = post(f"{OCS_BASE_URL}/deck/api/v1.0/cards/{card_id}/comments", headers=header, auth=(username, token), json={"message":message.text, "parentId": None})
     comment.raise_for_status()
     comment_info = comment.json()
-    comment_id = comment_info.get('ocs', None).get('ocs', {}).get('data', {}).get('id')
+    comment_id = comment_info.get('ocs', {}).get('data', {}).get('id')
     save_task_comment(card_id, comment_id)
+
     count_commnets_and_attachments = get_task_stat(card_id)
     upsert_task_stats(card_id, count_commnets_and_attachments[0] + 1, count_commnets_and_attachments[1])
 
