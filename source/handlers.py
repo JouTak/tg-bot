@@ -4,10 +4,10 @@ from source.app_logging import logger
 from source.connections.bot_factory import bot
 from source.connections.sender import send_message_limited
 from source.db.repos.users import get_login_by_tg_id, save_login_to_db, save_login_token, delete_login_token, get_token, get_nc_token
-from source.db.repos.tasks import save_task_to_db, get_tasks_from_users
+from source.db.repos.tasks import save_task_to_db, get_tasks_from_users, save_task_comment, get_task_stat, upsert_task_stats
 from source.db.repos.boards import save_board_topic
 from source.connections.nextcloud_api import fetch_user_tasks, get_board_title
-from source.config import COMMIT_HASH, WEB_APP_URL
+from source.config import COMMIT_HASH, WEB_APP_URL, OCS_BASE_URL, HEADERS
 
 from requests import post
 
@@ -170,6 +170,31 @@ def set_board_topic_handler(message):
     save_board_topic(board_id, thread_id)
     send_message_limited(chat_id, f"Этот топик (ID {thread_id}) привязан к доске {board_title} (ID: {board_id})",
                          message_thread_id=message.message_thread_id)
+
+
+@bot.message_handler(func=lambda msg: bool(getattr(msg, "text", "")) and not msg.text.startswith('/') and msg.reply_to_message and msg.chat.type != "private" and msg.reply_to_message.from_user.id == bot.get_me().id)
+def reply_comments(message):
+    chat_id = message.chat.id
+    if (get_login_by_tg_id(message.from_user.id) == None) or (get_login_by_tg_id(message.from_user.id) != None and get_nc_token(message.from_user.id) == None):
+        send_message_limited(chat_id, "Ты зарегистрирован старым способом и бот не может отправить твой ответ на этот комментарий. Пожалуйста, мигрируй свой аккаунт командой /register (или какая там) в лс с ботом")
+        return
+
+    keyboard = message.reply_to_message.reply_markup
+    if keyboard is None:
+        return
+    keyboard_url = keyboard.keyboard[0][0].url
+    card_id = int(keyboard_url.split("card/")[1])
+    username = get_login_by_tg_id(message.from_user.id)
+    token = get_nc_token(message.from_user.id)
+    header = {'OCS-APIRequest': 'true', 'Content-Type': 'application/json', 'Accept': 'application/json'}
+    comment = post(f"{OCS_BASE_URL}/deck/api/v1.0/cards/{card_id}/comments", headers=header, auth=(username, token), json={"message":message.text, "parentId": None})
+    comment.raise_for_status()
+    comment_info = comment.json()
+    comment_id = comment_info.get('ocs', None).get('ocs', {}).get('data', {}).get('id')
+    save_task_comment(card_id, comment_id)
+    count_commnets_and_attachments = get_task_stat(card_id)
+    upsert_task_stats(card_id, count_commnets_and_attachments[0] + 1, count_commnets_and_attachments[1])
+
 
 
 @bot.message_handler(func=lambda msg: bool(getattr(msg, "text", "")) and not msg.text.startswith('/'))
