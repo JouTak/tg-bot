@@ -242,12 +242,9 @@ def poll_new_tasks():
 
                         if inc_comments != 0:
                             comments_data = item.get('comments_data') or []
-                            #тут чинить
                             id_to_info_map = {comm['comment_id']: {'author': comm['author'], 'message': comm['message']} for comm in comments_data}
-                            print(id_to_info_map)
                             comments_api = set(id_to_info_map.keys())
                             comments_db = get_task_comments(card_id)
-                            print(comments_db)
                             news_comments = comments_api - comments_db
                             old_comments = comments_db - comments_api
                             for comment_id in old_comments:
