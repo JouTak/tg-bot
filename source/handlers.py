@@ -1,4 +1,4 @@
-from telebot.types import (InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo)
+from telebot.types import (InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, ReactionTypeEmoji)
 
 from source.app_logging import logger
 from source.connections.bot_factory import bot
@@ -188,6 +188,8 @@ def reply_comments(message):
     token = get_nc_token(message.from_user.id)
     header = {'OCS-APIRequest': 'true', 'Content-Type': 'application/json', 'Accept': 'application/json'}
     comment = post(f"{OCS_BASE_URL}/deck/api/v1.0/cards/{card_id}/comments", headers=header, auth=(username, token), json={"message":message.text, "parentId": None})
+    if comment.status_code == 404:
+        return
     comment.raise_for_status()
     comment_info = comment.json()
     comment_id = comment_info.get('ocs', {}).get('data', {}).get('id')
@@ -196,7 +198,7 @@ def reply_comments(message):
     count_commnets_and_attachments = get_task_stat(card_id)
     upsert_task_stats(card_id, count_commnets_and_attachments[0] + 1, count_commnets_and_attachments[1])
 
-
+    bot.set_message_reaction(chat_id, message.id, [ReactionTypeEmoji(emoji="👍")], is_big=False)
 
 @bot.message_handler(func=lambda msg: bool(getattr(msg, "text", "")) and not msg.text.startswith('/'))
 def save_login(message):
