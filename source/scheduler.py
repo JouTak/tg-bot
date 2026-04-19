@@ -242,7 +242,6 @@ def poll_new_tasks():
 
                         if inc_comments != 0:
                             comments_data = item.get('comments_data') or []
-
                             id_to_info_map = {comm['comment_id']: {'author': comm['author'], 'message': comm['message']} for comm in comments_data}
                             comments_api = set(id_to_info_map.keys())
                             comments_db = get_task_comments(card_id)
@@ -252,7 +251,7 @@ def poll_new_tasks():
                                 delete_task_comment(card_id, comment_id)
 
                             comment_text = '\\\\\\'
-
+                            list(news_comments).sort()
                             for comment_id in news_comments:
                                 data = id_to_info_map.get(comment_id)
                                 if data is not None:

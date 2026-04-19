@@ -52,7 +52,6 @@ def handle_card_move(call):
 @bot.callback_query_handler(func=lambda call: call.data == "check")
 def check_login(call):
     poll_token = get_token(call.from_user.id)
-    print(poll_token)
     endpoint = WEB_APP_URL + "/login/v2/poll"
     headers = {
         'User-Agent': 'ITMOCraftBot',
