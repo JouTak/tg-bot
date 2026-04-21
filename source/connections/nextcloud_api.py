@@ -364,7 +364,7 @@ def fetch_all_tasks():
             boards = boards_resp.json()
 
             for board in boards:
-                if board.get('archived', False):
+                if board.get('archived', False): #вот тут насчет баги, чтобы комменты были отображались для и архивных тасков
                     continue
 
                 board_id = board['id']

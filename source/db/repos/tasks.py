@@ -162,6 +162,14 @@ def get_task_stats_map():
     conn.close()
     return {row[0]: {"comments_count": row[1], "attachments_count": row[2]} for row in rows}
 
+def get_task_stat(card_id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT comments_count, attachments_count FROM task_stats WHERE card_id = %s", (card_id, ))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return list(row)
 
 def upsert_task_stats(card_id: int, comments_count: int, attachments_count: int):
     conn = get_mysql_connection()
