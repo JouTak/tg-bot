@@ -198,7 +198,7 @@ def reply_comments(message):
     count_commnets_and_attachments = get_task_stat(card_id)
     upsert_task_stats(card_id, count_commnets_and_attachments[0] + 1, count_commnets_and_attachments[1])
 
-    bot.set_message_reaction(chat_id, message.id, [ReactionTypeEmoji(emoji="👍")], is_big=False)
+    bot.set_message_reaction(chat_id, message.id, [ReactionTypeEmoji(emoji="🙏")], is_big=False)
 
 @bot.message_handler(func=lambda msg: bool(getattr(msg, "text", "")) and not msg.text.startswith('/'))
 def save_login(message):
