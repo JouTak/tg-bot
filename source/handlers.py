@@ -203,15 +203,16 @@ def reply_comments(message):
 @bot.message_handler(func=lambda msg: bool(getattr(msg, "text", "")) and not msg.text.startswith('/'))
 def save_login(message):
     """
+    DEPRECATED
     Сохраняет логин Nextcloud, отправленный пользователем в личные сообщения.
     """
     if message.chat.type != "private":
         return
-    logger.info(f"Свободный текст в ЛС (сохранение логина) от user_id={message.from_user.id} "
+    logger.info(f"Свободный текст в ЛС от user_id={message.from_user.id} "
                 f"({message.from_user.username}):\n{message.text}")
     if get_login_by_tg_id(message.chat.id) is not None:
         return
     chat_id = message.chat.id
-    nc_login = message.text.strip()
-    save_login_to_db(chat_id, nc_login)
-    send_message_limited(chat_id, f"Логин `{nc_login}` сохранён.")
+    #nc_login = message.text.strip()
+    #save_login_to_db(chat_id, nc_login)
+    send_message_limited(chat_id, f"Этот бот создан специально для организаторов клуба @ITMOcraft! Если ты у нас в команде, регистрируйся в боте через команду /register. \n\nИнтересует вступление в команду организаторов? Заполняй анкету: https://forms.yandex.ru/u/67773408068ff0452320c8b4!")
