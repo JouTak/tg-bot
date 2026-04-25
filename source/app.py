@@ -14,7 +14,7 @@ import source.callbacks  # noqa: F401
 from source.deadlines import poll_deadlines
 from source.migrations.init_db import init_db
 from source.migrations.migration import auto_migrate
-
+from source.nc_calendar import get_calendar
 
 def _get(obj, name, default=None):
     try:
