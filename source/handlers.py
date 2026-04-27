@@ -108,8 +108,14 @@ def show_user_cards(message):
 
 @bot.message_handler(commands=['calendar'])
 def calendar_handler(message):
-    events = get_calendar()
     chat_id = message.chat.id
+
+    saved_login = get_login_by_tg_id(chat_id)
+    if not saved_login:
+        send_message_limited(chat_id, "Команду могут использовать лишь члены команды ИТМОкрафт!")
+        return
+
+    events = get_calendar()
     if events is None:
         send_message_limited(chat_id, "Ну это похоже ты не из нашей команды.")
         return
