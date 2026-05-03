@@ -73,6 +73,21 @@ def get_user_map():
     conn.close()
     return {row[1]: row[0] for row in rows}
 
+def get_users():
+    """
+    Возвращает словарь:
+    {   username: nc_login
+        password: nc_token }
+
+    """
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT nc_login, nc_token FROM users")
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return [{"username": row[0], "password": row[1]} for row in rows]
+
 def save_login_token(id, token):
     conn = get_mysql_connection()
     cursor = conn.cursor()
