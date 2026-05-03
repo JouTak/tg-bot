@@ -78,3 +78,5 @@ EXCLUDED_CARD_IDS = {int(i) for i in os.getenv("EXCLUDED_CARD_IDS", "").split(",
 COMMIT_REPO_URL = 'https://github.com/JouTak/tg-bot'
 
 WEB_APP_URL = os.getenv("WEB_APP_URL")
+
+WEB_CALDAV_URL = os.getenv("WEB_CALDAV_URL")

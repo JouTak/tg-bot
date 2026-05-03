@@ -11,6 +11,9 @@ from source.config import COMMIT_HASH, WEB_APP_URL, OCS_BASE_URL, HEADERS
 
 from requests import post
 
+from source.nc_calendar import get_calendar
+
+
 @bot.message_handler(commands=['start'])
 def start_handler(message):
     chat_id = message.chat.id
@@ -103,6 +106,23 @@ def show_user_cards(message):
         )
         send_message_limited(chat_id, msg, reply_markup=kb)
 
+@bot.message_handler(commands=['calendar'])
+def calendar_handler(message):
+    chat_id = message.chat.id
+
+    saved_login = get_login_by_tg_id(chat_id)
+    if not saved_login:
+        send_message_limited(chat_id, "Команду могут использовать лишь члены команды ИТМОкрафт!")
+        return
+
+    events = get_calendar()
+    if events is None:
+        send_message_limited(chat_id, "Ну это похоже ты не из нашей команды.")
+        return
+
+    send_message_limited(chat_id, "События на неделю")
+    for e in events:
+        send_message_limited(chat_id, e)
 
 @bot.message_handler(commands=['commit'])
 def commit_handler(message):
