@@ -7,9 +7,21 @@ DEPS_DIR="${PYTHON_DEPS_DIR:-/tmp/tg-itmocraft-deps}"
 
 MYSQL_PORT="${MYSQL_PORT:-3306}"
 
-if [ -n "${MYSQL_HOST:-}" ]; then
+if [ "${SKIP_DB_WAIT:-0}" != "1" ] && [ -n "${MYSQL_HOST:-}" ]; then
   echo "Waiting for MySQL at ${MYSQL_HOST}:${MYSQL_PORT}..."
-  until mysql -h"${MYSQL_HOST}" -P"${MYSQL_PORT}" -u"${MYSQL_USER}" -p"${MYSQL_PASS}" -e "SELECT 1" >/dev/null 2>&1; do
+
+  for i in $(seq 1 60); do
+    if mysql -h"${MYSQL_HOST}" -P"${MYSQL_PORT}" -u"${MYSQL_USER}" -p"${MYSQL_PASS}" -e "SELECT 1" >/dev/null 2>&1; then
+      echo "MySQL is ready."
+      break
+    fi
+
+    if [ "$i" = "60" ]; then
+      echo "MySQL is not available after 120 seconds. Last error:"
+      mysql -h"${MYSQL_HOST}" -P"${MYSQL_PORT}" -u"${MYSQL_USER}" -p"${MYSQL_PASS}" -e "SELECT 1"
+      exit 1
+    fi
+
     sleep 2
   done
 fi
