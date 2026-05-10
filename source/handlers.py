@@ -196,7 +196,7 @@ def set_board_topic_handler(message):
 def reply_comments(message):
     chat_id = message.chat.id
     if (get_login_by_tg_id(message.from_user.id) == None) or (get_login_by_tg_id(message.from_user.id) != None and get_nc_token(message.from_user.id) == None):
-        send_message_limited(chat_id, "Бот хочет отправить ответ на эту карточку, однако не может, так как ты не зарегистрирован новым способом. Пожалуйста, зарегистрируй|мигрируй свой аккаунт командой /register в лс с ботом")
+        send_message_limited(chat_id, "Бот хочет отправить ответ на эту карточку, однако не может, так как ты не зарегистрирован новым способом. Пожалуйста, зарегистрируй|мигрируй свой аккаунт командой /register в лс с ботом", message_thread_id=message.message_thread_id)
         return
 
     keyboard = message.reply_to_message.reply_markup
