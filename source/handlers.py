@@ -106,9 +106,9 @@ def show_user_cards(message):
         )
         send_message_limited(chat_id, msg, reply_markup=kb)
 
-@bot.message_handler(commands=['calendar'])
+@bot.message_handler(commands=['calendar'], func=lambda msg: msg.chat.type == "private")
 def calendar_handler(message):
-    chat_id = message.chat.id
+    chat_id = message.from_user.id
 
     saved_login = get_login_by_tg_id(chat_id)
     if not saved_login:
@@ -116,8 +116,8 @@ def calendar_handler(message):
         return
 
     events = get_calendar()
-    if events is None:
-        send_message_limited(chat_id, "Ну это похоже ты не из нашей команды.")
+    if events is None or events == []:
+        send_message_limited(chat_id, "Ну это похоже ты не из нашей команды. Или нет ближайших событий.")
         return
 
     send_message_limited(chat_id, "События на неделю")

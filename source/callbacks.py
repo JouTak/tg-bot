@@ -67,12 +67,26 @@ def check_login(call):
             nc_login = auth_data['loginName']
             nc_token = auth_data['appPassword']
 
-            save_login_to_db_with_token(call.from_user.id, nc_login, nc_token)
-
             delete_login_token(call.from_user.id)
             bot.edit_message_text(f"✅ Успешно! Аккаунт {nc_login} привязан.",
                                   call.message.chat.id,
                                   call.message.message_id)
+
+            user_url = WEB_APP_URL + "/ocs/v1.php/cloud/user"
+
+            user_response = requests.get(
+                user_url,
+                auth=(nc_login, nc_token),
+                headers=headers
+            )
+
+            user_response.raise_for_status()
+
+            email = user_response.json().get("ocs", {}).get("data", {}).get("email")
+
+            save_login_to_db_with_token(call.from_user.id, nc_login, email, nc_token)
+
+
         else:
             send_message_limited(call.message.chat.id, "Произошла ошибка или срок действия ссылки истек.")
 
