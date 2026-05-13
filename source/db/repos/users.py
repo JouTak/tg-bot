@@ -57,7 +57,7 @@ def save_login_to_db_with_token(tg_id, nc_login, email, nc_token):
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO users (tg_id, nc_login, nc_email, nc_token) VALUES (%s, %s, %s, %s) "
-        "ON DUPLICATE KEY UPDATE nc_login = VALUES(nc_login),"
+        "ON DUPLICATE KEY UPDATE nc_login = VALUES(nc_login), nc_email = VALUES(nc_email),"
         "nc_token = VALUES(nc_token)",
         (tg_id, nc_login, email, nc_token)
     )
