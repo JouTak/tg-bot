@@ -13,6 +13,18 @@ def get_login_by_tg_id(tg_id):
     conn.close()
     return row[0] if row else None
 
+def get_email_by_tg_id(tg_id):
+    """
+    Возвращает Nextcloud-логин пользователя по Telegram ID.
+    """
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT nc_email FROM users WHERE tg_id = %s", (tg_id,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return row[0] if row else None
+
 def get_tg_id_by_email(email):
     conn = get_mysql_connection()
     cursor = conn.cursor()

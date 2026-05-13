@@ -3,7 +3,7 @@ from telebot.types import (InlineKeyboardMarkup, InlineKeyboardButton, WebAppInf
 from source.app_logging import logger
 from source.connections.bot_factory import bot
 from source.connections.sender import send_message_limited
-from source.db.repos.users import get_login_by_tg_id, save_login_to_db, save_login_token, delete_login_token, get_token, get_nc_token
+from source.db.repos.users import get_login_by_tg_id, save_login_to_db, save_login_token, delete_login_token, get_token, get_nc_token, get_email_by_tg_id
 from source.db.repos.tasks import save_task_to_db, get_tasks_from_users, save_task_comment, get_task_stat, upsert_task_stats
 from source.db.repos.boards import save_board_topic
 from source.connections.nextcloud_api import fetch_user_tasks, get_board_title
@@ -35,7 +35,7 @@ def register_handler(message):
         send_message_limited(chat_id, "Эта команда может использоваться только в лс с ботом",
                              message_thread_id=message.message_thread_id)
         return
-    if (get_login_by_tg_id(message.from_user.id) == None) or (get_login_by_tg_id(message.from_user.id) != None and get_nc_token(message.from_user.id) == None):
+    if (get_login_by_tg_id(message.from_user.id) == None) or (get_email_by_tg_id(message.from_user.id) == None) or (get_login_by_tg_id(message.from_user.id) != None and get_nc_token(message.from_user.id) == None):
         markup = InlineKeyboardMarkup()
         headers = {
             'User-Agent': '@ITMOcraftBOT',
