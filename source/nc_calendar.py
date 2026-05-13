@@ -1,6 +1,7 @@
 from source.config import WEB_CALDAV_URL, USERNAME, PASSWORD, COOLDOWN_TUESDAY, COOLDOWN_SUNDAY, COOLDOWN_DEFAULT
 from source.connections.sender import send_message_limited
 from source.db.repos.users import get_users, get_tg_id_by_email
+from source.app_logging import logger
 from caldav import DAVClient
 from icalendar import Calendar
 from datetime import datetime, timedelta
@@ -78,11 +79,9 @@ def get_calendar():
     return result
 
 def poll_events():
-
-    result = []
     client = DAVClient(WEB_CALDAV_URL, username=USERNAME, password=PASSWORD)
     principal = client.principal()
-
+    logger.info(f"CALDAV: Запускается фоновый опрос!")
     while True:
         start = datetime.now()
 
@@ -95,8 +94,6 @@ def poll_events():
             cooldown = COOLDOWN_DEFAULT
         end = start + timedelta(hours=cooldown)
 
-        #нужно просто получая всю инфу пройтись по attendes и мы просто отправить им сообщения
-        #нужно по display name or email получать id и потом отправлять письмо счастья
         for calendar in principal.calendars():
             try:
                 events = calendar.date_search(start=start, end=end)
@@ -121,7 +118,6 @@ def poll_events():
                                 for a in attendees:
                                     res += f"{a}\n"
 
-                            #attendees = parse_attendees(component)
                             if attendees:
                                 for user in attendees:
                                     email = user.get('email')
@@ -131,7 +127,7 @@ def poll_events():
                                     if tg_id:
                                         send_message_limited(tg_id, res)
 
-
-
             except Exception as e:
-                return None
+                logger.exception("CALDAV: ой")
+
+            sleep(cooldown*3600)
