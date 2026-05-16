@@ -13,6 +13,26 @@ def get_login_by_tg_id(tg_id):
     conn.close()
     return row[0] if row else None
 
+def get_email_by_tg_id(tg_id):
+    """
+    Возвращает Nextcloud-логин пользователя по Telegram ID.
+    """
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT nc_email FROM users WHERE tg_id = %s", (tg_id,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return row[0] if row else None
+
+def get_tg_id_by_email(email):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT tg_id FROM users WHERE nc_email = %s", (email,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return row[0] if row else None
 
 def save_login_to_db(tg_id, nc_login):
     """
@@ -29,17 +49,17 @@ def save_login_to_db(tg_id, nc_login):
     cursor.close()
     conn.close()
 
-def save_login_to_db_with_token(tg_id, nc_login, nc_token):
+def save_login_to_db_with_token(tg_id, nc_login, email, nc_token):
     """
     Сохраняет или обновляет соответствие Telegram ID и Nextcloud логина.
     """
     conn = get_mysql_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO users (tg_id, nc_login, nc_token) VALUES (%s, %s, %s) "
-        "ON DUPLICATE KEY UPDATE nc_login = VALUES(nc_login),"
+        "INSERT INTO users (tg_id, nc_login, nc_email, nc_token) VALUES (%s, %s, %s, %s) "
+        "ON DUPLICATE KEY UPDATE nc_login = VALUES(nc_login), nc_email = VALUES(nc_email),"
         "nc_token = VALUES(nc_token)",
-        (tg_id, nc_login, nc_token)
+        (tg_id, nc_login, email, nc_token)
     )
     conn.commit()
     cursor.close()
