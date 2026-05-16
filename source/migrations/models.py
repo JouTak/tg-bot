@@ -2,7 +2,7 @@ from source.db.db import Base
 
 from sqlalchemy import (
     Column, Integer, BigInteger, String, Text,
-    DateTime, TIMESTAMP, ForeignKey
+    DateTime, TIMESTAMP, ForeignKey, Boolean
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -131,3 +131,14 @@ class NextCloudLogin(Base):
 
     tg_id = Column(BigInteger, primary_key=True)
     token = Column(String(128), nullable=False)
+
+class CalDavSendData(Base):
+    __tablename__ = "caldav_send_data"
+
+    event_name = Column(String(100), primary_key=True)
+
+    sent_at = Column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.current_timestamp()
+    )

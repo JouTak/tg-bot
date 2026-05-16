@@ -1,7 +1,9 @@
-from source.config import WEB_CALDAV_URL, USERNAME, PASSWORD, COOLDOWN_TUESDAY, COOLDOWN_SUNDAY, COOLDOWN_DEFAULT
+from source.config import WEB_CALDAV_URL, USERNAME, PASSWORD, COOLDOWN_TUESDAY, COOLDOWN_SUNDAY, COOLDOWN_DEFAULT, \
+    POLL_INTERVAL
 from source.connections.sender import send_message_limited
 from source.db.repos.users import get_users, get_tg_id_by_email
 from source.app_logging import logger
+from source.db.repos.caldav_calendar import get_events_from_db, save_event_sends, delete_event_sends
 from caldav import DAVClient
 from icalendar import Calendar
 from datetime import datetime, timedelta
@@ -81,7 +83,7 @@ def get_calendar():
 def poll_events():
     client = DAVClient(WEB_CALDAV_URL, username=USERNAME, password=PASSWORD)
     principal = client.principal()
-    logger.info(f"CALDAV: Запускается фоновый опрос!")
+    logger.info(f"CALDAV: Запускается фоновый опрос, частота {POLL_INTERVAL} секунд!")
     while True:
         start = datetime.now()
 
@@ -93,7 +95,9 @@ def poll_events():
         else:
             cooldown = COOLDOWN_DEFAULT
         end = start + timedelta(hours=cooldown)
-
+        all_sended_events = get_events_from_db()
+        sended_events = set()
+        events_now_sends = set()
         for calendar in principal.calendars():
             try:
                 events = calendar.date_search(start=start, end=end)
@@ -104,6 +108,16 @@ def poll_events():
                         if component.name == "VEVENT":
 
                             summary = str(component.get("summary", "Без названия"))
+                            if summary in events_now_sends:
+                                continue
+
+                            if summary in all_sended_events:
+                                sended_events.add(summary)
+                                continue
+                            else:
+                                events_now_sends.add(summary)
+                                save_event_sends(summary)
+
                             description = str(component.get("description", ""))
                             location = str(component.get("location", ""))
                             start_dt = component.get("dtstart").dt if component.get("dtstart") else None
@@ -130,4 +144,8 @@ def poll_events():
             except Exception as e:
                 logger.exception("CALDAV: ой")
 
-            sleep(cooldown*3600)
+        deleted_events_from_db = all_sended_events - sended_events
+        for del_event in deleted_events_from_db:
+            delete_event_sends(del_event)
+
+        sleep(POLL_INTERVAL)
