@@ -2,9 +2,11 @@ import requests
 from requests.auth import HTTPBasicAuth
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from source.connections.bot_factory import bot
-from source.db.repos.users import delete_login_token, get_token, save_login_to_db_with_token
+from source.db.repos.users import delete_login_token, get_token, save_login_to_db_with_token, get_email_by_tg_id
 from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, WEB_APP_URL
 from source.connections.sender import send_message_limited
+from source.nc_calendar import update_event_partstat
+from source.db.repos.caldav_calendar import get_url_by_id
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("move:"))
 def handle_card_move(call):
@@ -96,3 +98,37 @@ def check_login(call):
 
     except Exception as e:
         bot.answer_callback_query(call.id, "Произошла ошибка или срок действия ссылки истек.", show_alert=True)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('cal_'))
+def handle_cal(call):
+    bot.answer_callback_query(call.id)
+    parts = call.data.split('_', 2)
+    if len(parts) < 3:
+        return
+
+    action = parts[1]  # ACCEPTED, DECLINED, TENTATIVE
+    short_id = parts[2]
+
+    event_url = get_url_by_id(short_id)
+    if not event_url:
+        return
+
+    user_email = get_email_by_tg_id(call.from_user.id)
+
+    if not user_email:
+        bot.send_message(call.message.chat.id, "Не удалось найти ваш email в системе.")
+        return
+
+    success = update_event_partstat(event_url, user_email, action)
+
+    if success:
+        status_ru = {"ACCEPTED": "✅ Принято", "DECLINED": "❌ Отклонено", "TENTATIVE": "❓ Под вопросом"}
+        bot.edit_message_reply_markup(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            reply_markup=None
+        )
+        bot.send_message(call.message.chat.id, f"Ваш статус изменен на: {status_ru.get(action)}")
+    else:
+        bot.send_message(call.message.chat.id, "Произошла ошибка при обновлении статуса в календаре.")

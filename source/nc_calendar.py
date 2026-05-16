@@ -3,8 +3,9 @@ from source.config import WEB_CALDAV_URL, USERNAME, PASSWORD, COOLDOWN_TUESDAY, 
 from source.connections.sender import send_message_limited
 from source.db.repos.users import get_users, get_tg_id_by_email
 from source.app_logging import logger
-from source.db.repos.caldav_calendar import get_events_from_db, save_event_sends, delete_event_sends
-from caldav import DAVClient
+from source.db.repos.caldav_calendar import get_events_from_db, save_event_sends, delete_event_sends, get_id_by_name
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from caldav import DAVClient, error
 from icalendar import Calendar
 from datetime import datetime, timedelta
 
@@ -80,6 +81,40 @@ def get_calendar():
 
     return result
 
+
+def update_event_partstat(url: str, user_email: str, new_status: str) -> bool:
+    try:
+        client = DAVClient(WEB_CALDAV_URL, username=USERNAME, password=PASSWORD)
+        caldav_event = client.calendar(url=url).event_by_url(url)
+
+        if caldav_event:
+            cal = Calendar.from_ical(caldav_event.data)
+            updated = False
+
+            for component in cal.walk():
+                if component.name == "VEVENT":
+                    attendees = component.get('attendee', [])
+                    if not isinstance(attendees, list):
+                        attendees = [attendees]
+
+                    for attendee in attendees:
+                        if user_email.lower() in str(attendee).lower():
+                            attendee.params['PARTSTAT'] = [new_status]
+                            updated = True
+                            break
+
+            if updated:
+                caldav_event.data = cal.to_ical()
+                caldav_event.save()
+                return True
+
+        return False
+
+    except Exception as e:
+        logger.exception(f"Ошибка при обновлении статуса в CalDAV: {e}")
+        return False
+
+
 def poll_events():
     client = DAVClient(WEB_CALDAV_URL, username=USERNAME, password=PASSWORD)
     principal = client.principal()
@@ -103,6 +138,7 @@ def poll_events():
                 events = calendar.date_search(start=start, end=end)
                 for event in events:
                     cal = Calendar.from_ical(event.data)
+                    event_url = str(event.url)
                     for component in cal.walk():
                         res = ''
                         if component.name == "VEVENT":
@@ -116,7 +152,9 @@ def poll_events():
                                 continue
                             else:
                                 events_now_sends.add(summary)
-                                save_event_sends(summary)
+                                save_event_sends(summary, event_url)
+
+                            short_url = get_id_by_name(summary)
 
                             description = str(component.get("description", ""))
                             location = str(component.get("location", ""))
@@ -133,13 +171,22 @@ def poll_events():
                                     res += f"{a}\n"
 
                             if attendees:
+
                                 for user in attendees:
                                     email = user.get('email')
                                     if email is None:
                                         continue
                                     tg_id = get_tg_id_by_email(email)
                                     if tg_id:
-                                        send_message_limited(tg_id, res)
+                                        markup = InlineKeyboardMarkup()
+                                        btn_accept = InlineKeyboardButton("Принять",
+                                                                          callback_data=f"cal_ACCEPTED_{short_url}")
+                                        btn_decline = InlineKeyboardButton("Отклонить",
+                                                                           callback_data=f"cal_DECLINED_{short_url}")
+                                        btn_maybe = InlineKeyboardButton("Под вопросом",
+                                                                         callback_data=f"cal_TENTATIVE_{short_url}")
+                                        markup.row(btn_accept, btn_decline, btn_maybe)
+                                        send_message_limited(tg_id, res, reply_markup=markup)
 
             except Exception as e:
                 logger.exception("CALDAV: ой")

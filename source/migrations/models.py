@@ -135,10 +135,12 @@ class NextCloudLogin(Base):
 class CalDavSendData(Base):
     __tablename__ = "caldav_send_data"
 
-    event_name = Column(String(100), primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_name = Column(String(255), unique=True, nullable=False)
 
     sent_at = Column(
         TIMESTAMP,
         nullable=False,
         server_default=func.current_timestamp()
     )
+    url = Column(Text)
