@@ -53,9 +53,10 @@ def sync_nextcloud_users():
 
             if detail_res.status_code == 200:
                 user_data = detail_res.json().get('ocs', {}).get('data', {})
-
-                email = user_data.get('email', '').strip().lower()
-                print(uid)
+                try:
+                    email = user_data.get('email', '').strip().lower()
+                except AttributeError:
+                    continue
                 if email:
                     save_email_by_username(
                         nc_login=uid,
