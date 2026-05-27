@@ -102,7 +102,6 @@ def check_login(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('cal_'))
 def handle_cal(call):
-    bot.answer_callback_query(call.id)
     parts = call.data.split('_', 2)
     if len(parts) < 3:
         return
@@ -117,7 +116,7 @@ def handle_cal(call):
     user_email = get_email_by_tg_id(call.from_user.id)
 
     if not user_email:
-        bot.send_message(call.message.chat.id, "Не удалось найти ваш email в системе.")
+        send_message_limited(call.message.chat.id, "Не удалось найти ваш email в системе.")
         return
 
     success = update_event_partstat(event_url, user_email, action)
@@ -126,9 +125,8 @@ def handle_cal(call):
         status_ru = {"ACCEPTED": "✅ Принято", "DECLINED": "❌ Отклонено", "TENTATIVE": "❓ Под вопросом"}
         bot.edit_message_reply_markup(
             chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            reply_markup=None
+            message_id=call.message.message_id
         )
-        bot.send_message(call.message.chat.id, f"Ваш статус изменен на: {status_ru.get(action)}")
+        send_message_limited(call.message.chat.id, f"Ваш статус изменен на: {status_ru.get(action)}")
     else:
-        bot.send_message(call.message.chat.id, "Произошла ошибка при обновлении статуса в календаре.")
+        send_message_limited(call.message.chat.id, "Произошла ошибка при обновлении статуса в календаре.")

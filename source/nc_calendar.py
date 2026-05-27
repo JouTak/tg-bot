@@ -11,29 +11,43 @@ from datetime import datetime, timedelta
 
 from time import sleep
 
-def parse_attendees(component):
-    attendees = component.get("attendee")
-    if not attendees:
-        return []
 
-    if not isinstance(attendees, list):
-        attendees = [attendees]
+def get_all_participants(component):
+    """
+    Получает организатора и всех участников события.
+    Возвращает список словарей с нормализованными email и именами.
+    """
+    participants = []
 
-    result = []
-
-    for a in attendees:
-        result.append({
-            "email": a.to_ical().decode().replace("mailto:", ""),
-            "name": a.params.get("CN"),
-            "status": a.params.get("PARTSTAT"),   # ACCEPTED / DECLINED
-            "role": a.params.get("ROLE"),         # REQ-PARTICIPANT
-            "type": a.params.get("CUTYPE"),       # INDIVIDUAL / GROUP
-            "rsvp": a.params.get("RSVP"),         # TRUE/FALSE
-            "delegated_to": a.params.get("DELEGATED-TO"),
-            "delegated_from": a.params.get("DELEGATED-FROM"),
+    organizer = component.get("organizer")
+    if organizer:
+        email = str(organizer).lower().replace("mailto:", "")
+        name = str(organizer.params.get("CN", email))
+        participants.append({
+            "email": email,
+            "name": name,
+            "role": "ORGANIZER",
+            "status": "ACCEPTED"
         })
 
-    return result
+    attendees = component.get("attendee")
+    if attendees:
+        if not isinstance(attendees, list):
+            attendees = [attendees]
+
+        for a in attendees:
+            email = str(a).lower().replace("mailto:", "")
+            name = str(a.params.get("CN", email))
+            status = str(a.params.get("PARTSTAT", "NEEDS-ACTION"))
+            if not any(p['email'] == email for p in participants):
+                participants.append({
+                    "email": email,
+                    "name": name,
+                    "role": "ATTENDEE",
+                    "status": status
+                })
+
+    return participants
 
 
 def get_calendar():
@@ -42,8 +56,6 @@ def get_calendar():
     result = []
     client = DAVClient(WEB_CALDAV_URL, username=USERNAME, password=PASSWORD)
     principal = client.principal()
-    #нужно просто получая всю инфу пройтись по attendes и мы просто отправить им сообщения
-    #нужно по display name or email получать id и потом отправлять письмо счастья
     for calendar in principal.calendars():
         try:
             events = calendar.date_search(start=start, end=end)
@@ -52,7 +64,6 @@ def get_calendar():
                 for component in cal.walk():
                     res = ''
                     if component.name == "VEVENT":
-                        #тут я получаю и у меня вся инфа мы смотрим такие ага и крч отправляем запрос
                         summary = str(component.get("summary", "Без названия"))
                         description = str(component.get("description", ""))
                         location = str(component.get("location", ""))
@@ -61,7 +72,7 @@ def get_calendar():
                         organizer = component.get("organizer")
                         res += f'📅 СОБЫТИЕ\nНазвание: {summary}\nОписание: {description}\nЛокация: {location}\nНачало: {start_dt}\nКонец: {end_dt}\nОрганизатор: {organizer}\n'
 
-                        attendees = parse_attendees(component)
+                        attendees = get_all_participants(component)
 
                         if attendees:
                             res += "👥 Участники:\n"
@@ -120,55 +131,85 @@ def poll_events():
     principal = client.principal()
     logger.info(f"CALDAV: Запускается фоновый опрос, частота {POLL_INTERVAL} секунд!")
     while True:
+        logger.info(f"CALDAV: Получаю события...")
         start = datetime.now()
 
         now_day = start.weekday()
+        cooldown = COOLDOWN_DEFAULT
         if now_day == 3:
             cooldown = COOLDOWN_TUESDAY
         if now_day == 6:
             cooldown = COOLDOWN_SUNDAY
-        else:
-            cooldown = COOLDOWN_DEFAULT
+
         end = start + timedelta(hours=cooldown)
-        all_sended_events = get_events_from_db()
-        sended_events = set()
-        events_now_sends = set()
+        all_sended_events_uids = get_events_from_db()
+        current_found_uids = set()
+
         for calendar in principal.calendars():
             try:
                 events = calendar.date_search(start=start, end=end)
                 for event in events:
                     cal = Calendar.from_ical(event.data)
                     event_url = str(event.url)
+
                     for component in cal.walk():
                         res = ''
                         if component.name == "VEVENT":
+                            event_uid = str(component.get("uid"))
+                            current_found_uids.add(event_uid)
+
+                            if event_uid in all_sended_events_uids:
+                                continue
+
+                            all_sended_events_uids.add(event_uid)
+
+                            save_event_sends(event_uid, event_url)
+
+                            short_url = get_id_by_name(event_uid)
 
                             summary = str(component.get("summary", "Без названия"))
-                            if summary in events_now_sends:
-                                continue
+                            description = str(component.get("description", "Нет описания"))
+                            location = str(component.get("location", "Не указана"))
 
-                            if summary in all_sended_events:
-                                sended_events.add(summary)
-                                continue
+                            start_dt = component.get("dtstart").dt if component.get("dtstart") else "Неизвестно"
+                            end_dt = component.get("dtend").dt if component.get("dtend") else "Неизвестно"
+
+                            if isinstance(start_dt, datetime):
+                                start_dt_str = start_dt.strftime("%H:%M")
                             else:
-                                events_now_sends.add(summary)
-                                save_event_sends(summary, event_url)
+                                start_dt_str = str(start_dt)
 
-                            short_url = get_id_by_name(summary)
+                            if isinstance(end_dt, datetime):
+                                end_dt_str = end_dt.strftime("%H:%M")
+                            else:
+                                end_dt_str = str(end_dt)
 
-                            description = str(component.get("description", ""))
-                            location = str(component.get("location", ""))
-                            start_dt = component.get("dtstart").dt if component.get("dtstart") else None
-                            end_dt = component.get("dtend").dt if component.get("dtend") else None
-                            organizer = component.get("organizer")
-                            res += f'📅 СОБЫТИЕ\nНазвание: {summary}\nОписание: {description}\nЛокация: {location}\nНачало: {start_dt}\nКонец: {end_dt}\nОрганизатор: {organizer}\n'
+                            res += (f'📅 *СЕГОДНЯ СОБЫТИЕ*\n'
+                                    f'{summary}\n'
+                                    f'{description}\n\n'
+                                    f'Локация: {location}\n\n'
+                                    f'Начало: {start_dt_str}\n'
+                                    f'Конец: {end_dt_str}\n\n')
 
-                            attendees = parse_attendees(component)
+                            attendees = get_all_participants(component)
+
+                            if attendees:
+                                for a in attendees:
+                                    email = a.get('email')
+                                    name = a.get('name')
+                                    tg_id = get_tg_id_by_email(email)
+                                    if a['role'] == "ORGANIZER":
+                                        res += f"Организатор: [{name}](tg://user?id={tg_id})\n"
+                                        break
 
                             if attendees:
                                 res += "👥 Участники:\n"
                                 for a in attendees:
-                                    res += f"{a}\n"
+                                    email = a.get('email')
+                                    name = a.get('name')
+                                    tg_id = get_tg_id_by_email(email)
+                                    if a['role'] != "ORGANIZER":
+                                        res += f"[{name}](tg://user?id={tg_id})\n"
 
                             if attendees:
 
@@ -183,16 +224,13 @@ def poll_events():
                                                                           callback_data=f"cal_ACCEPTED_{short_url}")
                                         btn_decline = InlineKeyboardButton("Отклонить",
                                                                            callback_data=f"cal_DECLINED_{short_url}")
-                                        btn_maybe = InlineKeyboardButton("Под вопросом",
-                                                                         callback_data=f"cal_TENTATIVE_{short_url}")
-                                        markup.row(btn_accept, btn_decline, btn_maybe)
+                                        btn_maybe = InlineKeyboardButton("Под вопросом", callback_data=f"cal_TENTATIVE_{short_url}")
+                                        markup.row(btn_accept, btn_decline)
                                         send_message_limited(tg_id, res, reply_markup=markup)
 
             except Exception as e:
                 logger.exception("CALDAV: ой")
-
-        deleted_events_from_db = all_sended_events - sended_events
-        for del_event in deleted_events_from_db:
-            delete_event_sends(del_event)
-
+        deleted_events_uids = all_sended_events_uids - current_found_uids
+        for del_uid in deleted_events_uids:
+            delete_event_sends(del_uid)
         sleep(POLL_INTERVAL)
