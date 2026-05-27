@@ -41,7 +41,6 @@ def sync_nextcloud_users():
             return
 
         data = response.json()
-        print(data)
         try:
             user_ids = data.get('ocs', {}).get('data', {}).get('users', {})
         except AttributeError:
@@ -136,7 +135,6 @@ def get_calendar():
                             for a in attendees:
                                 res += f"{a}\n"
 
-                        # 🔥 ВСЯ СЫРАЯ ИНФА (очень полезно)
                         print("\n--- RAW FIELDS ---")
                         for k, v in component.items():
                             print(k, ":", v)
@@ -287,7 +285,7 @@ def poll_events():
                                         send_message_limited(tg_id, res, reply_markup=markup)
 
             except Exception as e:
-                logger.exception("CALDAV: ой")
+                logger.exception(f"CALDAV: ой {e}")
         deleted_events_uids = all_sended_events_uids - current_found_uids
         for del_uid in deleted_events_uids:
             delete_event_sends(del_uid)
