@@ -65,6 +65,17 @@ def save_login_to_db_with_token(tg_id, nc_login, email, nc_token):
     cursor.close()
     conn.close()
 
+def save_email_by_username(nc_email, nc_login):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET nc_email = %s WHERE nc_login = %s",
+        (nc_email, nc_login, )
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
 def get_user_list():
     """
     Возвращает список всех пользователей в формате [(tg_id, nc_login)].

@@ -1,16 +1,73 @@
+from traceback import print_tb
+
 from source.config import WEB_CALDAV_URL, USERNAME, PASSWORD, COOLDOWN_TUESDAY, COOLDOWN_SUNDAY, COOLDOWN_DEFAULT, \
-    POLL_INTERVAL
+    POLL_INTERVAL, WEB_APP_URL
 from source.connections.sender import send_message_limited
-from source.db.repos.users import get_users, get_tg_id_by_email
+from source.db.repos.users import get_users, get_tg_id_by_email, save_email_by_username
 from source.app_logging import logger
 from source.db.repos.caldav_calendar import get_events_from_db, save_event_sends, delete_event_sends, get_id_by_name
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 from caldav import DAVClient, error
 from icalendar import Calendar
 from datetime import datetime, timedelta
 
 from time import sleep
 
+import requests
+
+def sync_nextcloud_users():
+    """
+    Получает всех пользователей из Nextcloud и обновляет их данные в БД.
+    ВНИМАНИЕ: Пользователь (USERNAME), указанный в конфиге,
+    должен иметь права Администратора в Nextcloud.
+    """
+    logger.info("NEXTCLOUD: Начинаю синхронизацию пользователей...")
+    headers = {
+        "OCS-APIRequest": "true",
+        "Accept": "application/json"
+    }
+
+    auth = (USERNAME, PASSWORD)
+
+    try:
+
+        users_endpoint = f"{WEB_APP_URL}/ocs/v1.php/cloud/users?limit=1000"
+        response = requests.get(users_endpoint, headers=headers, auth=auth)
+
+        if response.status_code != 200:
+            logger.error(
+                f"CLOUD: Ошибка доступа к API. Код: {response.status_code}. Проверьте, является ли {USERNAME} админом.")
+            return
+
+        data = response.json()
+        print(data)
+        try:
+            user_ids = data.get('ocs', {}).get('data', {}).get('users', {})
+        except AttributeError:
+            return
+
+        updated_count = 0
+        for uid in user_ids:
+            detail_endpoint = f"{WEB_APP_URL}/ocs/v1.php/cloud/users/{uid}"
+            detail_res = requests.get(detail_endpoint, headers=headers, auth=auth)
+
+            if detail_res.status_code == 200:
+                user_data = detail_res.json().get('ocs', {}).get('data', {})
+
+                email = user_data.get('email', '').strip().lower()
+                print(uid)
+                if email:
+                    save_email_by_username(
+                        nc_login=uid,
+                        nc_email=email,
+                    )
+                    updated_count += 1
+
+        logger.info(f"CLOUD: Успешно синхронизировано {updated_count} пользователей с почтой.")
+
+    except Exception as e:
+        logger.exception(f"CLOUD: Критическая ошибка при синхронизации пользователей: {e}")
 
 def get_all_participants(component):
     """
@@ -132,8 +189,9 @@ def poll_events():
     logger.info(f"CALDAV: Запускается фоновый опрос, частота {POLL_INTERVAL} секунд!")
     while True:
         logger.info(f"CALDAV: Получаю события...")
-        start = datetime.now()
+        sync_nextcloud_users()
 
+        start = datetime.now()
         now_day = start.weekday()
         cooldown = COOLDOWN_DEFAULT
         if now_day == 3:
