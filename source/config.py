@@ -84,3 +84,5 @@ WEB_CALDAV_URL = os.getenv("WEB_CALDAV_URL")
 COOLDOWN_TUESDAY = int(os.getenv("COOLDOWN_TUESDAY", "2"))
 COOLDOWN_SUNDAY = int(os.getenv("COOLDOWN_SUNDAY", "10"))
 COOLDOWN_DEFAULT = int(os.getenv("COOLDOWN_DEFAULT", "2"))
+
+UPDATE_INTERVAL = int(os.getenv("UPDATE_INTERVAL", "1"))

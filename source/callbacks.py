@@ -102,6 +102,7 @@ def check_login(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('cal_'))
 def handle_cal(call):
+    bot.answer_callback_query("Пожалуйста подождите...")
     parts = call.data.split('_', 2)
     if len(parts) < 3:
         return

@@ -14,7 +14,7 @@ import source.callbacks  # noqa: F401
 from source.deadlines import poll_deadlines
 from source.migrations.init_db import init_db
 from source.migrations.migration import auto_migrate
-from source.nc_calendar import get_calendar, poll_events
+from source.nc_calendar import sync_nextcloud_users, poll_events
 
 def _get(obj, name, default=None):
     try:
@@ -151,7 +151,7 @@ def run():
     threading.Thread(target=poll_new_tasks, daemon=True).start()
     threading.Thread(target=poll_deadlines, daemon=True).start()
     threading.Thread(target=poll_events, daemon=True).start()
-
+    threading.Thread(target=sync_nextcloud_users, daemon=True).start()
     if is_debug():
         bot.set_update_listener(_updates_listener)
 
