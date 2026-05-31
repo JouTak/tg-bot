@@ -103,12 +103,16 @@ def check_login(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('cal_'))
 def handle_cal(call):
     bot.answer_callback_query(call.id)
-    parts = call.data.split('_', 2)
+    parts = call.data.split('_', 3)
     if len(parts) < 3:
         return
 
     action = parts[1]  # ACCEPTED, DECLINED, TENTATIVE
     short_id = parts[2]
+    status = parts[3]  # ACCEPTED, DECLINED, TENTATIVE
+
+    if action == status:
+        return
 
     event_url = get_url_by_id(short_id)
     if not event_url:
@@ -124,9 +128,24 @@ def handle_cal(call):
 
     if success:
         status_ru = {"ACCEPTED": "✅ Принято", "DECLINED": "❌ Отклонено", "TENTATIVE": "❓ Под вопросом"}
+        markup = call.message.reply_markup
+        for row in markup.keyboard:
+            for button in row:
+                btn_parts = button.callback_data.split('_')
+                btn_action = btn_parts[1]
+
+                if btn_action == action:
+                    button.style = "success"
+                else:
+                    button.style = None
+
+                button.callback_data = f"cal_{btn_action}_{short_id}_{action}"
+
+
         bot.edit_message_reply_markup(
             chat_id=call.message.chat.id,
-            message_id=call.message.message_id
+            message_id=call.message.message_id,
+            reply_markup = markup
         )
         send_message_limited(call.message.chat.id, f"Ваш статус изменен на: {status_ru.get(action)}")
     else:

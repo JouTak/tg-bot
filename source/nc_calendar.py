@@ -196,12 +196,16 @@ def get_calendar(teg_id):
                                 if tg_id == teg_id and res != '':
                                     markup = InlineKeyboardMarkup()
                                     if short_url is not None:
-                                        btn_accept = InlineKeyboardButton("Принять",
-                                                                          callback_data=f"cal_ACCEPTED_{short_url}")
-                                        btn_decline = InlineKeyboardButton("Отклонить",
-                                                                           callback_data=f"cal_DECLINED_{short_url}")
-                                        btn_maybe = InlineKeyboardButton("Под вопросом",
-                                                                         callback_data=f"cal_TENTATIVE_{short_url}")
+                                        accept = "success" if user['status'] == "ACCEPTED" else None
+                                        decline = "success" if user['status'] == "DECLINED" else None
+                                        maybe = "success" if user['status'] == "TENTATIVE" else None
+
+                                        btn_accept = InlineKeyboardButton("Принять", style = accept,
+                                                                          callback_data=f"cal_ACCEPTED_{short_url}_{user['status']}")
+                                        btn_decline = InlineKeyboardButton("Отклонить", style = decline,
+                                                                           callback_data=f"cal_DECLINED_{short_url}_{user['status']}")
+                                        btn_maybe = InlineKeyboardButton("Под вопросом", style = maybe,
+                                                                         callback_data=f"cal_TENTATIVE_{short_url}_{user['status']}")
                                         markup.row(btn_accept, btn_decline)
 
                                     result.append([res, markup])
@@ -263,7 +267,7 @@ def poll_events():
         if now_day == 6:
             cooldown = COOLDOWN_SUNDAY
 
-        end = start + timedelta(days=cooldown+10)
+        end = start + timedelta(hours=cooldown)
         all_sended_events_uids = get_events_from_db()
         current_found_uids = set()
 
@@ -354,11 +358,17 @@ def poll_events():
                                     if tg_id:
                                         markup = InlineKeyboardMarkup()
                                         if short_url is not None:
-                                            btn_accept = InlineKeyboardButton("Принять",
-                                                                              callback_data=f"cal_ACCEPTED_{short_url}")
-                                            btn_decline = InlineKeyboardButton("Отклонить",
-                                                                               callback_data=f"cal_DECLINED_{short_url}")
-                                            btn_maybe = InlineKeyboardButton("Под вопросом", callback_data=f"cal_TENTATIVE_{short_url}")
+                                            accept = "success" if user['status'] == "ACCEPTED" else None
+                                            decline = "success" if user['status'] == "DECLINED" else None
+                                            maybe = "success" if user['status'] == "TENTATIVE" else None
+
+                                            btn_accept = InlineKeyboardButton("Принять", style=accept,
+                                                                              callback_data=f"cal_ACCEPTED_{short_url}_{user['status']}")
+                                            btn_decline = InlineKeyboardButton("Отклонить", style=decline,
+                                                                               callback_data=f"cal_DECLINED_{short_url}_{user['status']}")
+                                            btn_maybe = InlineKeyboardButton("Под вопросом", style=maybe,
+                                                                             callback_data=f"cal_TENTATIVE_{short_url}_{user['status']}")
+
                                             markup.row(btn_accept, btn_decline)
 
                                         send_message_limited(tg_id, res, reply_markup=markup)
