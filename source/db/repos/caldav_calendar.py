@@ -25,6 +25,9 @@ def get_id_by_name(name):
     rows = cursor.fetchone()
     cursor.close()
     conn.close()
+    if rows is None:
+        return None
+
     return rows[0]
 
 def save_event_sends(name, url):

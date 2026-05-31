@@ -14,6 +14,14 @@ from time import sleep
 
 import requests
 
+
+PARSTAT_RU = {
+    "ACCEPTED": "Будет",
+    "DECLINED": "Не будет",
+    "TENTATIVE": "Под вопросом",
+    "NEEDS-ACTION": "Неизвестно"
+}
+
 def sync_nextcloud_users():
     """
     Получает всех пользователей из Nextcloud и обновляет их данные в БД.
@@ -106,7 +114,7 @@ def get_all_participants(component):
     return participants
 
 
-def get_calendar():
+def get_calendar(teg_id):
     start = datetime.now()
     end = start + timedelta(days=7)
     result = []
@@ -120,12 +128,18 @@ def get_calendar():
                 for component in cal.walk():
                     res = ''
                     if component.name == "VEVENT":
+                        event_uid = str(component.get("uid"))
+                        if component.get("uid") is None:
+                            event_uid = str(component.get("dtstart"))
+
                         summary = str(component.get("summary", "Без названия"))
                         description = str(component.get("description", "Нет описания"))
                         location = str(component.get("location", "Не указана"))
 
                         start_dt = component.get("dtstart").dt if component.get("dtstart") else "Неизвестно"
                         end_dt = component.get("dtend").dt if component.get("dtend") else "Неизвестно"
+
+                        short_url = get_id_by_name(event_uid)
 
                         if isinstance(start_dt, datetime):
                             start_dt_str = start_dt.strftime("%H:%M")
@@ -167,15 +181,35 @@ def get_calendar():
                                 name = a.get('name')
                                 tg_id = get_tg_id_by_email(email)
                                 if a['role'] != "ORGANIZER" and tg_id is not None:
-                                    res += f"[{name}](tg://user?id={tg_id})\n"
+                                    res += f"[{name}](tg://user?id={tg_id}) — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
 
                                 elif a['role'] != "ORGANIZER" and tg_id is None:
-                                    res += f"{name}\n"
+                                    res += f"{name} — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
 
-                    if res != '':
-                        result.append(res)
+                        if attendees:
+                            for user in attendees:
+                                email = user.get('email')
+                                if email is None:
+                                    continue
+
+                                tg_id = get_tg_id_by_email(email)
+                                if tg_id == teg_id and res != '':
+                                    markup = InlineKeyboardMarkup()
+                                    if short_url is not None:
+                                        btn_accept = InlineKeyboardButton("Принять",
+                                                                          callback_data=f"cal_ACCEPTED_{short_url}")
+                                        btn_decline = InlineKeyboardButton("Отклонить",
+                                                                           callback_data=f"cal_DECLINED_{short_url}")
+                                        btn_maybe = InlineKeyboardButton("Под вопросом",
+                                                                         callback_data=f"cal_TENTATIVE_{short_url}")
+                                        markup.row(btn_accept, btn_decline)
+
+                                    result.append([res, markup])
+                                    break
+
 
         except Exception as e:
+            logger.error(f"CALDAV: {e}")
             return None
 
     return result
@@ -229,7 +263,7 @@ def poll_events():
         if now_day == 6:
             cooldown = COOLDOWN_SUNDAY
 
-        end = start + timedelta(hours=cooldown)
+        end = start + timedelta(days=cooldown+10)
         all_sended_events_uids = get_events_from_db()
         current_found_uids = set()
 
@@ -305,10 +339,10 @@ def poll_events():
                                     name = a.get('name')
                                     tg_id = get_tg_id_by_email(email)
                                     if a['role'] != "ORGANIZER" and tg_id is not None:
-                                        res += f"[{name}](tg://user?id={tg_id})\n"
+                                        res += f"[{name}](tg://user?id={tg_id}) — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
 
                                     elif a['role'] != "ORGANIZER" and tg_id is None:
-                                        res += f"{name}\n"
+                                        res += f"{name} — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
 
                             if attendees:
 
@@ -319,12 +353,14 @@ def poll_events():
                                     tg_id = get_tg_id_by_email(email)
                                     if tg_id:
                                         markup = InlineKeyboardMarkup()
-                                        btn_accept = InlineKeyboardButton("Принять",
-                                                                          callback_data=f"cal_ACCEPTED_{short_url}")
-                                        btn_decline = InlineKeyboardButton("Отклонить",
-                                                                           callback_data=f"cal_DECLINED_{short_url}")
-                                        btn_maybe = InlineKeyboardButton("Под вопросом", callback_data=f"cal_TENTATIVE_{short_url}")
-                                        markup.row(btn_accept, btn_decline)
+                                        if short_url is not None:
+                                            btn_accept = InlineKeyboardButton("Принять",
+                                                                              callback_data=f"cal_ACCEPTED_{short_url}")
+                                            btn_decline = InlineKeyboardButton("Отклонить",
+                                                                               callback_data=f"cal_DECLINED_{short_url}")
+                                            btn_maybe = InlineKeyboardButton("Под вопросом", callback_data=f"cal_TENTATIVE_{short_url}")
+                                            markup.row(btn_accept, btn_decline)
+
                                         send_message_limited(tg_id, res, reply_markup=markup)
 
             except Exception as e:
