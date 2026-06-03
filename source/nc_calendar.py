@@ -1,5 +1,5 @@
 from source.config import WEB_CALDAV_URL, USERNAME, PASSWORD, COOLDOWN_TUESDAY, COOLDOWN_SUNDAY, COOLDOWN_DEFAULT, \
-    POLL_INTERVAL, WEB_APP_URL, UPDATE_INTERVAL
+    POLL_INTERVAL, WEB_APP_URL, UPDATE_INTERVAL, TIMEZONE
 from source.connections.sender import send_message_limited
 from source.db.repos.users import get_tg_id_by_email, save_email_by_username
 from source.app_logging import logger
@@ -8,12 +8,17 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from caldav import DAVClient, error
 from icalendar import Calendar, vText
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from time import sleep
+from zoneinfo import ZoneInfo
 
 import requests
 
+try:
+    TEAM_TZ = ZoneInfo(TIMEZONE)
+except Exception:
+    TEAM_TZ = timezone(timedelta(hours=3))
 
 PARSTAT_RU = {
     "ACCEPTED": "Будет",
@@ -21,6 +26,17 @@ PARSTAT_RU = {
     "TENTATIVE": "Под вопросом",
     "NEEDS-ACTION": "Неизвестно"
 }
+
+
+def format_to_need_timezone(dt):
+    """Приводит время к МСК и форматирует в ЧЧ:ММ"""
+    if not isinstance(dt, datetime):
+        return str(dt)
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    return dt.astimezone(TEAM_TZ).strftime("%H:%M")
 
 def sync_nextcloud_users():
     """
@@ -115,7 +131,7 @@ def get_all_participants(component):
 
 
 def get_calendar(teg_id):
-    start = datetime.now()
+    start = datetime.now(TEAM_TZ)
     end = start + timedelta(days=7)
     result = []
     client = DAVClient(WEB_CALDAV_URL, username=USERNAME, password=PASSWORD)
@@ -142,12 +158,12 @@ def get_calendar(teg_id):
                         short_url = get_id_by_name(event_uid)
 
                         if isinstance(start_dt, datetime):
-                            start_dt_str = start_dt.strftime("%H:%M")
+                            start_dt_str = format_to_need_timezone(start_dt) if start_dt else "Неизвестно"
                         else:
                             start_dt_str = str(start_dt)
 
                         if isinstance(end_dt, datetime):
-                            end_dt_str = end_dt.strftime("%H:%M")
+                            end_dt_str = format_to_need_timezone(end_dt) if end_dt else "Неизвестно"
                         else:
                             end_dt_str = str(end_dt)
 
@@ -226,7 +242,7 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
         new_status: 'ACCEPTED', 'DECLINED', 'TENTATIVE'
     """
     try:
-        start = datetime.now()
+        start = datetime.now(TEAM_TZ)
         now_day = start.weekday()
         cooldown = COOLDOWN_DEFAULT
         if now_day == 3:
@@ -310,7 +326,7 @@ def poll_events():
     while True:
         logger.info(f"CALDAV: Получаю события...")
 
-        start = datetime.now()
+        start = datetime.now(TEAM_TZ)
         now_day = start.weekday()
         cooldown = COOLDOWN_DEFAULT
         if now_day == 3:
@@ -355,12 +371,12 @@ def poll_events():
                             end_dt = component.get("dtend").dt if component.get("dtend") else "Неизвестно"
 
                             if isinstance(start_dt, datetime):
-                                start_dt_str = start_dt.strftime("%H:%M")
+                                start_dt_str = format_to_need_timezone(start_dt) if start_dt else "Неизвестно"
                             else:
                                 start_dt_str = str(start_dt)
 
                             if isinstance(end_dt, datetime):
-                                end_dt_str = end_dt.strftime("%H:%M")
+                                end_dt_str = format_to_need_timezone(end_dt) if end_dt else "Неизвестно"
                             else:
                                 end_dt_str = str(end_dt)
 
