@@ -7,7 +7,7 @@ from source.db.repos.caldav_calendar import get_events_from_db, save_event_sends
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from caldav import DAVClient, error
-from icalendar import Calendar
+from icalendar import Calendar, vText
 from datetime import datetime, timedelta
 
 from time import sleep
@@ -219,38 +219,89 @@ def get_calendar(teg_id):
     return result
 
 
-def update_event_partstat(url: str, user_email: str, new_status: str) -> bool:
+def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> bool:
+    """
+        event_uid: UID события
+        user_email: Email участника
+        new_status: 'ACCEPTED', 'DECLINED', 'TENTATIVE'
+    """
     try:
+        start = datetime.now()
+        now_day = start.weekday()
+        cooldown = COOLDOWN_DEFAULT
+        if now_day == 3:
+            cooldown = COOLDOWN_TUESDAY
+        if now_day == 6:
+            cooldown = COOLDOWN_SUNDAY
+
+        end = start + timedelta(hours=cooldown)
+
+        new_status = new_status.upper()
+        if new_status not in ['ACCEPTED', 'DECLINED', 'TENTATIVE']:
+            logger.error(f"Неверный статус: {new_status}")
+            return False
+
+
         client = DAVClient(WEB_CALDAV_URL, username=USERNAME, password=PASSWORD)
-        caldav_event = client.calendar(url=url).event_by_url(url)
+        principal = client.principal()
 
-        if caldav_event:
-            cal = Calendar.from_ical(caldav_event.data)
-            updated = False
+        target_event = None
 
-            for component in cal.walk():
-                if component.name == "VEVENT":
-                    attendees = component.get('attendee', [])
-                    if not isinstance(attendees, list):
-                        attendees = [attendees]
-
-                    for attendee in attendees:
-                        if user_email.lower() in str(attendee).lower():
-                            attendee.params['PARTSTAT'] = [new_status]
-                            updated = True
+        calendars = principal.calendars()
+        for calendar in calendars:
+            try:
+                events = calendar.date_search(start=start, end=end)
+                for event in events:
+                    ical = event.icalendar_instance
+                    for component in ical.walk('VEVENT'):
+                        if str(component.get('UID')) == event_uid:
+                            target_event = event
+                            logger.info(f"Событие найдено в календаре '{calendar.name}'")
                             break
+                    if target_event: break
+            except Exception as e:
+                logger.debug(f"Пропуск календаря {calendar.name}: {e}")
+                continue
+            if target_event: break
 
-            if updated:
-                caldav_event.data = cal.to_ical()
-                caldav_event.save()
+        if not target_event:
+            logger.error(f"Не удалось найти событие {event_uid} у пользователя {user_email}")
+            return False
+
+        ical = target_event.icalendar_instance
+        updated = False
+
+        for component in ical.walk('VEVENT'):
+            if str(component.get('UID')) != event_uid:
+                continue
+
+            attendees = component.get('ATTENDEE')
+            if not attendees: continue
+            if not isinstance(attendees, list): attendees = [attendees]
+
+            for attendee in attendees:
+                if user_email.lower() in str(attendee).lower():
+                    attendee.params['PARTSTAT'] = [vText(new_status)]
+                    attendee.params['RSVP'] = [vText('FALSE')]
+                    updated = True
+                    break
+
+        if updated:
+            target_event.icalendar_instance = ical
+            try:
+                target_event.save()
+                logger.info(f"Статус '{new_status}' успешно обновлен для {user_email}")
                 return True
-
-        return False
+            except Exception as e:
+                logger.error(f"Ошибка сохранения: {e}")
+                return False
+        else:
+            logger.error(f"Участник {user_email} не найден в списке ATTENDEE.")
+            return False
 
     except Exception as e:
-        logger.exception(f"Ошибка при обновлении статуса в CalDAV: {e}")
+        logger.exception(f"Критический сбой функции: {e}")
         return False
-
 
 def poll_events():
     client = DAVClient(WEB_CALDAV_URL, username=USERNAME, password=PASSWORD)

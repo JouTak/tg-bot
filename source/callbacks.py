@@ -6,7 +6,7 @@ from source.db.repos.users import delete_login_token, get_token, save_login_to_d
 from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, WEB_APP_URL
 from source.connections.sender import send_message_limited
 from source.nc_calendar import update_event_partstat
-from source.db.repos.caldav_calendar import get_url_by_id
+from source.db.repos.caldav_calendar import get_name_by_id
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("move:"))
 def handle_card_move(call):
@@ -114,7 +114,7 @@ def handle_cal(call):
     if action == status:
         return
 
-    event_url = get_url_by_id(short_id)
+    event_url = get_name_by_id(short_id)
     if not event_url:
         return
 

@@ -35,7 +35,7 @@ def register_handler(message):
         send_message_limited(chat_id, "Эта команда может использоваться только в лс с ботом",
                              message_thread_id=message.message_thread_id)
         return
-    if get_login_by_tg_id(message.from_user.id) is None or get_email_by_tg_id(message.from_user.id) is None or get_nc_token(message.from_user.id) is None:
+    if get_login_by_tg_id(message.from_user.id) is None or get_email_by_tg_id(message.from_user.id) is None or get_nc_token(message.from_user.id) is not None:
         markup = InlineKeyboardMarkup()
         headers = {
             'User-Agent': '@ITMOcraftBOT',
