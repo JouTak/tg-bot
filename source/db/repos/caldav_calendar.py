@@ -16,7 +16,7 @@ def get_url_by_id(t_id):
     rows = cursor.fetchone()
     cursor.close()
     conn.close()
-    return rows[0]
+    return rows[0] if rows else None
 
 def get_name_by_id(t_id):
     conn = get_mysql_connection()
@@ -25,7 +25,7 @@ def get_name_by_id(t_id):
     rows = cursor.fetchone()
     cursor.close()
     conn.close()
-    return rows[0]
+    return rows[0] if rows else None
 
 def get_id_by_name(name):
     conn = get_mysql_connection()

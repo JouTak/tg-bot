@@ -104,7 +104,7 @@ def check_login(call):
 def handle_cal(call):
     bot.answer_callback_query(call.id)
     parts = call.data.split('_', 3)
-    if len(parts) < 3:
+    if len(parts) < 4:
         return
 
     action = parts[1]  # ACCEPTED, DECLINED, TENTATIVE

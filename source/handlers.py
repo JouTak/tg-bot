@@ -35,7 +35,7 @@ def register_handler(message):
         send_message_limited(chat_id, "Эта команда может использоваться только в лс с ботом",
                              message_thread_id=message.message_thread_id)
         return
-    if get_login_by_tg_id(message.from_user.id) is None or get_email_by_tg_id(message.from_user.id) is None or get_nc_token(message.from_user.id) is not None:
+    if get_login_by_tg_id(message.from_user.id) is None or get_email_by_tg_id(message.from_user.id) is None or get_nc_token(message.from_user.id) is None:
         markup = InlineKeyboardMarkup()
         headers = {
             'User-Agent': '@ITMOcraftBOT',
@@ -196,7 +196,7 @@ def set_board_topic_handler(message):
 @bot.message_handler(func=lambda msg: bool(getattr(msg, "text", "")) and not msg.text.startswith('/') and msg.reply_to_message and msg.chat.type != "private" and msg.reply_to_message.from_user.id == bot.get_me().id)
 def reply_comments(message):
     chat_id = message.chat.id
-    if (get_login_by_tg_id(message.from_user.id) == None) or (get_login_by_tg_id(message.from_user.id) != None and get_nc_token(message.from_user.id) == None):
+    if (get_login_by_tg_id(message.from_user.id) is None) or (get_login_by_tg_id(message.from_user.id) is not None and get_nc_token(message.from_user.id) is None):
         send_message_limited(chat_id, "Бот хочет отправить ответ на эту карточку, однако не может, так как ты не зарегистрирован новым способом. Пожалуйста, зарегистрируй|мигрируй свой аккаунт командой /register в лс с ботом", message_thread_id=message.message_thread_id)
         return
 
