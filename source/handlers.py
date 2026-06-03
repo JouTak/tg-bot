@@ -35,7 +35,7 @@ def register_handler(message):
         send_message_limited(chat_id, "Эта команда может использоваться только в лс с ботом",
                              message_thread_id=message.message_thread_id)
         return
-    if (get_login_by_tg_id(message.from_user.id) == None) or (get_email_by_tg_id(message.from_user.id) == None) or (get_login_by_tg_id(message.from_user.id) != None and get_email_by_tg_id(message.from_user.id) != None and get_nc_token(message.from_user.id) == None):
+    if get_login_by_tg_id(message.from_user.id) is None or get_email_by_tg_id(message.from_user.id) is None or get_nc_token(message.from_user.id) is None:
         markup = InlineKeyboardMarkup()
         headers = {
             'User-Agent': '@ITMOcraftBOT',
@@ -108,21 +108,22 @@ def show_user_cards(message):
 
 @bot.message_handler(commands=['calendar'], func=lambda msg: msg.chat.type == "private")
 def calendar_handler(message):
-    chat_id = message.from_user.id
+    chat_id = message.chat.id
+    user_id = message.from_user.id
 
-    saved_login = get_login_by_tg_id(chat_id)
+    saved_login = get_login_by_tg_id(user_id)
     if not saved_login:
         send_message_limited(chat_id, "Команду могут использовать лишь члены команды ИТМОкрафт!")
         return
 
-    events = get_calendar()
+    events = get_calendar(user_id)
     if events is None or events == []:
         send_message_limited(chat_id, "Ну это похоже ты не из нашей команды. Или нет ближайших событий.")
         return
 
     send_message_limited(chat_id, "События на неделю")
     for e in events:
-        send_message_limited(chat_id, e)
+        send_message_limited(chat_id, e[0], reply_markup=e[1])
 
 @bot.message_handler(commands=['commit'])
 def commit_handler(message):
@@ -195,7 +196,7 @@ def set_board_topic_handler(message):
 @bot.message_handler(func=lambda msg: bool(getattr(msg, "text", "")) and not msg.text.startswith('/') and msg.reply_to_message and msg.chat.type != "private" and msg.reply_to_message.from_user.id == bot.get_me().id)
 def reply_comments(message):
     chat_id = message.chat.id
-    if (get_login_by_tg_id(message.from_user.id) == None) or (get_login_by_tg_id(message.from_user.id) != None and get_nc_token(message.from_user.id) == None):
+    if (get_login_by_tg_id(message.from_user.id) is None) or (get_login_by_tg_id(message.from_user.id) is not None and get_nc_token(message.from_user.id) is None):
         send_message_limited(chat_id, "Бот хочет отправить ответ на эту карточку, однако не может, так как ты не зарегистрирован новым способом. Пожалуйста, зарегистрируй|мигрируй свой аккаунт командой /register в лс с ботом", message_thread_id=message.message_thread_id)
         return
 

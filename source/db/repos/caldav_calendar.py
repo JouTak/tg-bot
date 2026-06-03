@@ -16,7 +16,16 @@ def get_url_by_id(t_id):
     rows = cursor.fetchone()
     cursor.close()
     conn.close()
-    return rows[0]
+    return rows[0] if rows else None
+
+def get_name_by_id(t_id):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT event_name FROM caldav_send_data WHERE id = %s", (t_id, ))
+    rows = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return rows[0] if rows else None
 
 def get_id_by_name(name):
     conn = get_mysql_connection()
@@ -25,6 +34,9 @@ def get_id_by_name(name):
     rows = cursor.fetchone()
     cursor.close()
     conn.close()
+    if rows is None:
+        return None
+
     return rows[0]
 
 def save_event_sends(name, url):

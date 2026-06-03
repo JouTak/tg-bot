@@ -34,6 +34,15 @@ def get_tg_id_by_email(email):
     conn.close()
     return row[0] if row else None
 
+def get_user_credentials_from_db(email):
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT nc_login, nc_token FROM users WHERE nc_email = %s", (email,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return row if row else None
+
 def save_login_to_db(tg_id, nc_login):
     """
     Сохраняет или обновляет соответствие Telegram ID и Nextcloud логина.

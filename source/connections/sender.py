@@ -43,7 +43,7 @@ _italic_pat = re.compile(r'_(.+?)_')
 _a_tag_pat = re.compile(r'<a\s+href="https?://[^"]+">.*?</a>', re.IGNORECASE | re.DOTALL)
 _quote_pat = re.compile(r'\\\\\\(.+?)///', re.IGNORECASE | re.DOTALL)
 _pre_pat = re.compile(r'```(.+?)```', re.IGNORECASE | re.DOTALL)
-
+_mention_pat = re.compile(r'\[([^\]]+)\]\((tg://user\?id=\d+)\)', re.IGNORECASE)
 
 def _auto_html(text: str | None) -> str:
     """
@@ -65,6 +65,9 @@ def _auto_html(text: str | None) -> str:
     stashed = _a_tag_pat.sub(_stash, raw)
 
     s = html.escape(stashed, quote=False)
+
+    s = _mention_pat.sub(lambda m: f'<a href="{m.group(2)}">{m.group(1)}</a>', s)
+
     s = _quote_pat.sub(lambda m: f"<blockquote expandable>{m.group(1)}</blockquote>", s)
     s = _pre_pat.sub(lambda m: f"<pre>{m.group(1)}</pre>", s)
     s = _bold_pat.sub(lambda m: f"<b>{m.group(1)}</b>", s)
