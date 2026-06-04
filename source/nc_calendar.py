@@ -243,14 +243,7 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
     """
     try:
         start = datetime.now(TEAM_TZ)
-        now_day = start.weekday()
-        cooldown = COOLDOWN_DEFAULT
-        if now_day == 3:
-            cooldown = COOLDOWN_TUESDAY
-        if now_day == 6:
-            cooldown = COOLDOWN_SUNDAY
-
-        end = start + timedelta(hours=cooldown)
+        end = start + timedelta(days=7)
 
         new_status = new_status.upper()
         if new_status not in ['ACCEPTED', 'DECLINED', 'TENTATIVE']:
