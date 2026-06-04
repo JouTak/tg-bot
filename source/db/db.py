@@ -1,26 +1,32 @@
-import mysql.connector
-from source.config import MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASS, MYSQL_DB
+from contextlib import contextmanager
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+
+from source.config import MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASS, MYSQL_DB
 
 DATABASE_URL = f"mysql+mysqlconnector://{MYSQL_USER}:{MYSQL_PASS}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DB}"
 
 engine = create_engine(
     DATABASE_URL,
-    echo=True,
-    pool_pre_ping=True
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=3600,
 )
 
-SessionLocal = sessionmaker(bind=engine)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 
-def get_mysql_connection():
-    conn = mysql.connector.connect(
-        host=MYSQL_HOST,
-        port=MYSQL_PORT,
-        user=MYSQL_USER,
-        password=MYSQL_PASS,
-        database=MYSQL_DB,
-        charset="utf8mb4"
-    )
-    return conn
+
+@contextmanager
+def get_session():
+    """Context manager для работы с сессией SQLAlchemy."""
+    session = SessionLocal()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
