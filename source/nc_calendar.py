@@ -155,7 +155,7 @@ def get_calendar(teg_id):
                         start_dt = component.get("dtstart").dt if component.get("dtstart") else "Неизвестно"
                         end_dt = component.get("dtend").dt if component.get("dtend") else "Неизвестно"
 
-                        short_url = get_id_by_name(event_uid)
+                        short_url = event_uid
 
                         if isinstance(start_dt, datetime):
                             start_dt_str = format_to_need_timezone(start_dt) if start_dt else "Неизвестно"
@@ -361,7 +361,7 @@ def poll_events():
 
                             save_event_sends(event_uid, event_url)
 
-                            short_url = get_id_by_name(event_uid)
+                            short_url = event_uid
 
                             summary = str(component.get("summary", "Без названия"))
                             description = str(component.get("description", "Нет описания"))
