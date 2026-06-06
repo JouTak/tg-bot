@@ -114,7 +114,7 @@ def handle_cal(call):
     if action == status:
         return
 
-    event_url = get_name_by_id(short_id)
+    event_url = short_id
     if not event_url:
         return
 
