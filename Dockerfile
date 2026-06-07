@@ -8,28 +8,33 @@ ARG GIT_COMMIT=unknown
 ENV GIT_COMMIT=${GIT_COMMIT}
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends build-essential gcc ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc \
+        ca-certificates \
+        default-mysql-client \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --shell /bin/bash bot \
-  && mkdir -p /app \
-  && chown bot:bot /app
+    && mkdir -p /app \
+    && chown bot:bot /app
 
 WORKDIR /app
 
 COPY source/requirements.txt /app/source/requirements.txt
+
 RUN python -m pip install --upgrade pip \
-  && pip install --no-cache-dir -r /app/source/requirements.txt
+    && pip install --no-cache-dir -r /app/source/requirements.txt
 
 COPY source /app/source
 COPY alembic.ini /app/alembic.ini
 COPY alembic /app/alembic
 COPY entrypoint.sh /app/entrypoint.sh
+
 RUN chmod +x /app/entrypoint.sh \
-  && chown -R bot:bot /app
+    && chown -R bot:bot /app
 
 USER bot
-
 WORKDIR /app/source
 
 ENTRYPOINT ["/app/entrypoint.sh"]
