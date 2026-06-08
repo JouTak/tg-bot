@@ -8,7 +8,7 @@ from source.app_logging import logger, is_debug
 from source.scheduler import poll_new_tasks
 from source.connections.bot_factory import bot
 from source.connections.sender import send_message_limited
-from source.config import FORUM_CHAT_ID, BOT_START_MESSAGE_TOPIC_ID, COMMIT_HASH, COMMIT_REPO_URL
+from source.config import FORUM_CHAT_ID, BOT_START_MESSAGE_TOPIC_ID, COMMIT_HASH, COMMIT_REPO_URL, CALDAV_PASSWORD, CALDAV_USERNAME
 import source.handlers  # noqa: F401
 import source.callbacks  # noqa: F401
 from source.deadlines import poll_deadlines
@@ -150,7 +150,8 @@ def run():
 
     threading.Thread(target=poll_new_tasks, daemon=True).start()
     threading.Thread(target=poll_deadlines, daemon=True).start()
-    threading.Thread(target=poll_events, daemon=True).start()
+    if CALDAV_PASSWORD is not None and CALDAV_USERNAME is not None:
+        threading.Thread(target=poll_events, daemon=True).start()
     threading.Thread(target=sync_nextcloud_users, daemon=True).start()
     if is_debug():
         bot.set_update_listener(_updates_listener)
