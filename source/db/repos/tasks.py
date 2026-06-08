@@ -1,343 +1,366 @@
-from source.db.db import get_mysql_connection
+from datetime import datetime
+from typing import Optional, Dict, Set, List, Tuple, Any
+
+from sqlalchemy import select, delete
+from sqlalchemy.orm import joinedload
+
+from source.db.db import get_session
+from source.migrations.models import (
+    Task, TaskAssignee, TaskStat, TaskLabel,
+    TaskAttachment, TaskComment, DeadlineReminder
+)
 
 
-def get_tasks_from_db(tg_id):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT card_id FROM tasks WHERE tg_id = %s", (tg_id,))
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return set(r[0] for r in rows)
+def get_tasks_from_db(tg_id: int) -> Set[int]:
+    """Возвращает set card_id задач пользователя."""
+    # Этот метод не используется, но оставлен для совместимости
+    with get_session() as session:
+        stmt = select(Task.card_id)
+        result = session.execute(stmt).scalars().all()
+        return set(result)
 
 
-def save_task_to_db(card_id, title, description, board_id, board_title, stack_id, stack_title, prev_stack_id,
-                    prev_stack_title, next_stack_id, next_stack_title, duedate, done, etag):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT INTO tasks
-          (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate,
-          etag, prev_stack_id, prev_stack_title, next_stack_id, next_stack_title, done)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON DUPLICATE KEY UPDATE
-          title=VALUES(title),
-          description=VALUES(description),
-          board_id=VALUES(board_id),
-          board_title=VALUES(board_title),
-          stack_id=VALUES(stack_id),
-          stack_title=VALUES(stack_title),
-          duedate=VALUES(duedate),
-          etag=VALUES(etag),
-          prev_stack_id=VALUES(prev_stack_id),
-          prev_stack_title=VALUES(prev_stack_title),
-          next_stack_id=VALUES(next_stack_id),
-          next_stack_title=VALUES(next_stack_title),
-          done=VALUES(done)
-        """,
-        (card_id, title, description, board_id, board_title, stack_id, stack_title, duedate, etag, prev_stack_id,
-         prev_stack_title, next_stack_id, next_stack_title, done)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
+def save_task_to_db(
+    card_id: int, title: str, description: str,
+    board_id: int, board_title: str,
+    stack_id: int, stack_title: str,
+    prev_stack_id: Optional[int], prev_stack_title: Optional[str],
+    next_stack_id: Optional[int], next_stack_title: Optional[str],
+    duedate: Optional[datetime], done: Optional[datetime], etag: Optional[str]
+) -> None:
+    """Сохраняет или обновляет задачу."""
+    with get_session() as session:
+        task = session.get(Task, card_id)
+        if task:
+            task.title = title
+            task.description = description
+            task.board_id = board_id
+            task.board_title = board_title
+            task.stack_id = stack_id
+            task.stack_title = stack_title
+            task.prev_stack_id = prev_stack_id
+            task.prev_stack_title = prev_stack_title
+            task.next_stack_id = next_stack_id
+            task.next_stack_title = next_stack_title
+            task.duedate = duedate
+            task.done = done
+            task.etag = etag
+        else:
+            task = Task(
+                card_id=card_id, title=title, description=description,
+                board_id=board_id, board_title=board_title,
+                stack_id=stack_id, stack_title=stack_title,
+                prev_stack_id=prev_stack_id, prev_stack_title=prev_stack_title,
+                next_stack_id=next_stack_id, next_stack_title=next_stack_title,
+                duedate=duedate, done=done, etag=etag
+            )
+            session.add(task)
 
 
-def save_task_assignee(card_id, nc_login):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT IGNORE INTO task_assignees
-          (card_id, nc_login)
-        VALUES (%s, %s)
-        """,
-        (card_id, nc_login)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
+def update_task_in_db(
+    card_id: int, title: str, description: str,
+    board_id: int, board_title: str,
+    stack_id: int, stack_title: str,
+    prev_stack_id: Optional[int], prev_stack_title: Optional[str],
+    next_stack_id: Optional[int], next_stack_title: Optional[str],
+    duedate: Optional[datetime], done: Optional[datetime], etag: Optional[str]
+) -> None:
+    """Обновляет задачу."""
+    with get_session() as session:
+        task = session.get(Task, card_id)
+        if task:
+            task.title = title
+            task.description = description
+            task.board_id = board_id
+            task.board_title = board_title
+            task.stack_id = stack_id
+            task.stack_title = stack_title
+            task.prev_stack_id = prev_stack_id
+            task.prev_stack_title = prev_stack_title
+            task.next_stack_id = next_stack_id
+            task.next_stack_title = next_stack_title
+            task.duedate = duedate
+            task.done = done
+            task.etag = etag
 
 
-def delete_task_assignee(card_id, nc_login):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        DELETE IGNORE FROM task_assignees
-        WHERE card_id = %s AND nc_login = %s
-        """,
-        (card_id, nc_login)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
+def save_task_assignee(card_id: int, nc_login: str) -> None:
+    """Добавляет назначенного пользователя к задаче."""
+    with get_session() as session:
+        stmt = select(TaskAssignee).where(
+            TaskAssignee.card_id == card_id,
+            TaskAssignee.nc_login == nc_login
+        )
+        existing = session.execute(stmt).scalar_one_or_none()
+        if not existing:
+            assignee = TaskAssignee(card_id=card_id, nc_login=nc_login)
+            session.add(assignee)
 
 
-def get_task_assignees(card_id):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT nc_login FROM task_assignees WHERE card_id = %s", (card_id,))
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return set(row[0] for row in rows)
+def delete_task_assignee(card_id: int, nc_login: str) -> None:
+    """Удаляет назначенного пользователя."""
+    with get_session() as session:
+        stmt = delete(TaskAssignee).where(
+            TaskAssignee.card_id == card_id,
+            TaskAssignee.nc_login == nc_login
+        )
+        session.execute(stmt)
 
 
-def get_saved_tasks():
-    conn = get_mysql_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM tasks")
-    tasks = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return {t['card_id']: t for t in tasks}
+def get_task_assignees(card_id: int) -> Set[str]:
+    """Возвращает set логинов назначенных пользователей."""
+    with get_session() as session:
+        stmt = select(TaskAssignee.nc_login).where(TaskAssignee.card_id == card_id)
+        result = session.execute(stmt).scalars().all()
+        return set(result)
 
 
-def get_saved_tasks_for_deadlines():
-    conn = get_mysql_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        """
-        SELECT tasks.*, 
-            GROUP_CONCAT(nc_login ORDER BY nc_login SEPARATOR ' ') AS assigned_logins 
-            FROM tasks 
-            JOIN task_assignees ON tasks.card_id = task_assignees.card_id 
-            GROUP BY card_id
-            """)
-    tasks = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    for t in tasks:
-        t['assigned_logins'] = t['assigned_logins'].split()
-    return tasks
+def get_saved_tasks() -> Dict[int, Dict[str, Any]]:
+    """Возвращает словарь { card_id: task_dict } для всех задач."""
+    with get_session() as session:
+        stmt = select(Task)
+        tasks = session.execute(stmt).scalars().all()
+        return {
+            t.card_id: {
+                'card_id': t.card_id,
+                'title': t.title,
+                'description': t.description,
+                'board_id': t.board_id,
+                'board_title': t.board_title,
+                'stack_id': t.stack_id,
+                'stack_title': t.stack_title,
+                'prev_stack_id': t.prev_stack_id,
+                'prev_stack_title': t.prev_stack_title,
+                'next_stack_id': t.next_stack_id,
+                'next_stack_title': t.next_stack_title,
+                'duedate': t.duedate,
+                'done': t.done,
+                'etag': t.etag,
+            }
+            for t in tasks
+        }
 
 
-def get_tasks_from_users(login):
-    conn = get_mysql_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-                    SELECT tasks.* FROM tasks 
-                    JOIN task_assignees ON tasks.card_id = task_assignees.card_id 
-                    WHERE nc_login = %s 
-                    GROUP BY card_id
-                    """, (login,))
-    tasks = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return tasks
+def get_saved_tasks_for_deadlines() -> List[Dict[str, Any]]:
+    """Возвращает задачи с назначенными пользователями для проверки дедлайнов."""
+    with get_session() as session:
+        stmt = (
+            select(Task)
+            .join(TaskAssignee)
+            .options(joinedload(Task.assignees))
+        )
+        tasks = session.execute(stmt).unique().scalars().all()
+
+        result = []
+        for t in tasks:
+            task_dict = {
+                'card_id': t.card_id,
+                'title': t.title,
+                'description': t.description,
+                'board_id': t.board_id,
+                'board_title': t.board_title,
+                'stack_id': t.stack_id,
+                'stack_title': t.stack_title,
+                'prev_stack_id': t.prev_stack_id,
+                'prev_stack_title': t.prev_stack_title,
+                'next_stack_id': t.next_stack_id,
+                'next_stack_title': t.next_stack_title,
+                'duedate': t.duedate,
+                'done': t.done,
+                'etag': t.etag,
+                'assigned_logins': [a.nc_login for a in t.assignees],
+            }
+            result.append(task_dict)
+        return result
 
 
-def update_task_in_db(card_id, title, description, board_id, board_title, stack_id, stack_title, prev_stack_id,
-                      prev_stack_title, next_stack_id, next_stack_title, duedate, done, etag):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        UPDATE tasks SET
-            title=%s, description=%s,
-            board_id=%s, board_title=%s,
-            stack_id=%s, stack_title=%s,
-            duedate=%s, etag=%s,
-            prev_stack_id=%s, prev_stack_title=%s, 
-            next_stack_id=%s, next_stack_title=%s,
-            done=%s
-        WHERE card_id=%s
-        """,
-        (title, description, board_id, board_title, stack_id, stack_title, duedate, etag, prev_stack_id,
-         prev_stack_title, next_stack_id, next_stack_title, done, card_id)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
+def get_tasks_from_users(login: str) -> List[Dict[str, Any]]:
+    """Возвращает задачи конкретного пользователя."""
+    with get_session() as session:
+        stmt = (
+            select(Task)
+            .join(TaskAssignee)
+            .where(TaskAssignee.nc_login == login)
+        )
+        tasks = session.execute(stmt).scalars().all()
+
+        return [
+            {
+                'card_id': t.card_id,
+                'title': t.title,
+                'description': t.description,
+                'board_id': t.board_id,
+                'board_title': t.board_title,
+                'stack_id': t.stack_id,
+                'stack_title': t.stack_title,
+                'prev_stack_id': t.prev_stack_id,
+                'prev_stack_title': t.prev_stack_title,
+                'next_stack_id': t.next_stack_id,
+                'next_stack_title': t.next_stack_title,
+                'duedate': t.duedate,
+                'done': t.done,
+                'etag': t.etag,
+            }
+            for t in tasks
+        ]
 
 
-def get_task_stats_map():
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT card_id, comments_count, attachments_count FROM task_stats")
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return {row[0]: {"comments_count": row[1], "attachments_count": row[2]} for row in rows}
-
-def get_task_stat(card_id):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT comments_count, attachments_count FROM task_stats WHERE card_id = %s", (card_id, ))
-    row = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    return list(row)
-
-def upsert_task_stats(card_id: int, comments_count: int, attachments_count: int):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT INTO task_stats (card_id, comments_count, attachments_count)
-        VALUES (%s, %s, %s)
-        ON DUPLICATE KEY UPDATE
-          comments_count = VALUES(comments_count),
-          attachments_count = VALUES(attachments_count)
-        """,
-        (card_id, comments_count, attachments_count)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
+def get_task_stats_map() -> Dict[int, Dict[str, int]]:
+    """Возвращает словарь { card_id: {comments_count, attachments_count} }."""
+    with get_session() as session:
+        stmt = select(TaskStat)
+        stats = session.execute(stmt).scalars().all()
+        return {
+            s.card_id: {
+                "comments_count": s.comments_count,
+                "attachments_count": s.attachments_count
+            }
+            for s in stats
+        }
 
 
-def save_task_label(card_id, label):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT IGNORE INTO task_labels
-          (card_id, label)
-        VALUES (%s, %s)
-        """,
-        (card_id, label)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
+def get_task_stat(card_id: int) -> List[int]:
+    """Возвращает [comments_count, attachments_count] для задачи."""
+    with get_session() as session:
+        stat = session.get(TaskStat, card_id)
+        if stat:
+            return [stat.comments_count, stat.attachments_count]
+        return [0, 0]
 
 
-def delete_task_label(card_id, label):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        DELETE IGNORE FROM task_labels
-        WHERE card_id = %s AND label = %s
-        """,
-        (card_id, label)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
+def upsert_task_stats(card_id: int, comments_count: int, attachments_count: int) -> None:
+    """Создаёт или обновляет статистику задачи."""
+    with get_session() as session:
+        stat = session.get(TaskStat, card_id)
+        if stat:
+            stat.comments_count = comments_count
+            stat.attachments_count = attachments_count
+        else:
+            stat = TaskStat(
+                card_id=card_id,
+                comments_count=comments_count,
+                attachments_count=attachments_count
+            )
+            session.add(stat)
 
 
-def get_task_labels(card_id):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT label FROM task_labels WHERE card_id = %s", (card_id,))
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return set(row[0] for row in rows)
-
-def save_task_attachment(card_id, file_id):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT IGNORE INTO task_attachments
-          (card_id, file_id)
-        VALUES (%s, %s)
-        """,
-        (card_id, file_id)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
+def save_task_label(card_id: int, label: str) -> None:
+    """Добавляет метку к задаче."""
+    with get_session() as session:
+        stmt = select(TaskLabel).where(
+            TaskLabel.card_id == card_id,
+            TaskLabel.label == label
+        )
+        existing = session.execute(stmt).scalar_one_or_none()
+        if not existing:
+            task_label = TaskLabel(card_id=card_id, label=label)
+            session.add(task_label)
 
 
-def delete_task_attachment(card_id, file_id):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        DELETE IGNORE FROM task_attachments
-        WHERE card_id = %s AND file_id = %s
-        """,
-        (card_id, file_id)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
+def delete_task_label(card_id: int, label: str) -> None:
+    """Удаляет метку задачи."""
+    with get_session() as session:
+        stmt = delete(TaskLabel).where(
+            TaskLabel.card_id == card_id,
+            TaskLabel.label == label
+        )
+        session.execute(stmt)
 
 
-def get_task_attachments(card_id):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT file_id FROM task_attachments WHERE card_id = %s", (card_id,))
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return set(row[0] for row in rows)
+def get_task_labels(card_id: int) -> Set[str]:
+    """Возвращает set меток задачи."""
+    with get_session() as session:
+        stmt = select(TaskLabel.label).where(TaskLabel.card_id == card_id)
+        result = session.execute(stmt).scalars().all()
+        return set(result)
 
-def save_task_comment(card_id, comment_id):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT IGNORE INTO task_comments
-          (card_id, comment_id)
-        VALUES (%s, %s)
-        """,
-        (card_id, comment_id)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
 
-def delete_task_comment(card_id, comment_id):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        DELETE IGNORE FROM task_comments
-        WHERE card_id = %s AND comment_id = %s
-        """,
-        (card_id, comment_id)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
+def save_task_attachment(card_id: int, file_id: int) -> None:
+    """Добавляет вложение к задаче."""
+    with get_session() as session:
+        stmt = select(TaskAttachment).where(
+            TaskAttachment.card_id == card_id,
+            TaskAttachment.file_id == file_id
+        )
+        existing = session.execute(stmt).scalar_one_or_none()
+        if not existing:
+            attachment = TaskAttachment(card_id=card_id, file_id=file_id)
+            session.add(attachment)
 
-def get_task_comments(card_id):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT comment_id FROM task_comments WHERE card_id = %s", (card_id,))
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return set(row[0] for row in rows)
 
-def delete_task_full(card_id):
+def delete_task_attachment(card_id: int, file_id: int) -> None:
+    """Удаляет вложение задачи."""
+    with get_session() as session:
+        stmt = delete(TaskAttachment).where(
+            TaskAttachment.card_id == card_id,
+            TaskAttachment.file_id == file_id
+        )
+        session.execute(stmt)
+
+
+def get_task_attachments(card_id: int) -> Set[int]:
+    """Возвращает set file_id вложений задачи."""
+    with get_session() as session:
+        stmt = select(TaskAttachment.file_id).where(TaskAttachment.card_id == card_id)
+        result = session.execute(stmt).scalars().all()
+        return set(result)
+
+
+def save_task_comment(card_id: int, comment_id: int) -> None:
+    """Добавляет комментарий к задаче."""
+    with get_session() as session:
+        stmt = select(TaskComment).where(
+            TaskComment.card_id == card_id,
+            TaskComment.comment_id == comment_id
+        )
+        existing = session.execute(stmt).scalar_one_or_none()
+        if not existing:
+            comment = TaskComment(card_id=card_id, comment_id=comment_id)
+            session.add(comment)
+
+
+def delete_task_comment(card_id: int, comment_id: int) -> None:
+    """Удаляет комментарий задачи."""
+    with get_session() as session:
+        stmt = delete(TaskComment).where(
+            TaskComment.card_id == card_id,
+            TaskComment.comment_id == comment_id
+        )
+        session.execute(stmt)
+
+
+def get_task_comments(card_id: int) -> Set[int]:
+    """Возвращает set comment_id комментариев задачи."""
+    with get_session() as session:
+        stmt = select(TaskComment.comment_id).where(TaskComment.card_id == card_id)
+        result = session.execute(stmt).scalars().all()
+        return set(result)
+
+
+def delete_task_full(card_id: int) -> None:
     """
     Полностью удаляет карточку и все связанные записи из БД.
     Используется после архивации на стороне Nextcloud.
     """
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM deadline_reminders WHERE card_id = %s", (card_id,))
-    cursor.execute("DELETE FROM task_labels WHERE card_id = %s", (card_id,))
-    cursor.execute("DELETE FROM task_comments WHERE card_id = %s", (card_id,))
-    cursor.execute("DELETE FROM task_attachments WHERE card_id = %s", (card_id,))
-    cursor.execute("DELETE FROM task_assignees WHERE card_id = %s", (card_id,))
-    cursor.execute("DELETE FROM task_stats WHERE card_id = %s", (card_id,))
-    cursor.execute("DELETE FROM tasks WHERE card_id = %s", (card_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    with get_session() as session:
+        # Удаляем связанные записи
+        session.execute(delete(DeadlineReminder).where(DeadlineReminder.card_id == card_id))
+        session.execute(delete(TaskLabel).where(TaskLabel.card_id == card_id))
+        session.execute(delete(TaskComment).where(TaskComment.card_id == card_id))
+        session.execute(delete(TaskAttachment).where(TaskAttachment.card_id == card_id))
+        session.execute(delete(TaskAssignee).where(TaskAssignee.card_id == card_id))
+        session.execute(delete(TaskStat).where(TaskStat.card_id == card_id))
+        session.execute(delete(Task).where(Task.card_id == card_id))
 
-def get_etag_count(card_id):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-                    SELECT tasks.etag, task_stats.comments_count, task_stats.attachments_count 
-                    FROM tasks 
-                    JOIN task_stats ON tasks.card_id = task_stats.card_id 
-                    WHERE tasks.card_id = %s
-                """, (card_id,))
-    data = cursor.fetchone()
-    if data is None:
-        return None, None, None
 
-    cursor.close()
-    conn.close()
-    return list(data)
+def get_etag_count(card_id: int) -> Tuple[Optional[str], Optional[int], Optional[int]]:
+    """Возвращает (etag, comments_count, attachments_count) для задачи."""
+    with get_session() as session:
+        task = session.get(Task, card_id)
+        if not task:
+            return None, None, None
+
+        stat = session.get(TaskStat, card_id)
+        if stat:
+            return task.etag, stat.comments_count, stat.attachments_count
+        return task.etag, None, None
