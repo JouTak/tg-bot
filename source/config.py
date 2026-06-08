@@ -81,6 +81,9 @@ WEB_APP_URL = os.getenv("WEB_APP_URL")
 
 WEB_CALDAV_URL = os.getenv("WEB_CALDAV_URL")
 
+CALDAV_USERNAME = os.getenv("CALDAV_USER")
+CALDAV_PASSWORD = os.getenv("CALDAV_PASS")
+
 COOLDOWN_TUESDAY = int(os.getenv("COOLDOWN_TUESDAY", "2"))
 COOLDOWN_SUNDAY = int(os.getenv("COOLDOWN_SUNDAY", "10"))
 COOLDOWN_DEFAULT = int(os.getenv("COOLDOWN_DEFAULT", "2"))
