@@ -1,28 +1,28 @@
-from source.db.db import get_mysql_connection
+from typing import Optional
+
+from sqlalchemy import select
+
+from source.db.db import get_session
 from source.config import BOT_LOG_TOPIC_ID
+from source.migrations.models import BoardLogTopic
 
 
-def get_message_thread_id(board_id):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT message_thread_id FROM board_log_topics WHERE board_id = %s", (board_id,))
-    row = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    if row:
-        return row[0]
-    else:
+def get_message_thread_id(board_id: Optional[int]) -> Optional[int]:
+    """Возвращает message_thread_id для доски или дефолтный топик."""
+    if board_id is None:
         return BOT_LOG_TOPIC_ID
 
+    with get_session() as session:
+        topic = session.get(BoardLogTopic, board_id)
+        return topic.message_thread_id if topic else BOT_LOG_TOPIC_ID
 
-def save_board_topic(board_id, thread_id):
-    conn = get_mysql_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO board_log_topics (board_id, message_thread_id)
-        VALUES (%s, %s)
-        ON DUPLICATE KEY UPDATE message_thread_id = VALUES(message_thread_id)
-    """, (board_id, thread_id))
-    conn.commit()
-    cursor.close()
-    conn.close()
+
+def save_board_topic(board_id: int, thread_id: int) -> None:
+    """Привязывает топик к доске."""
+    with get_session() as session:
+        topic = session.get(BoardLogTopic, board_id)
+        if topic:
+            topic.message_thread_id = thread_id
+        else:
+            topic = BoardLogTopic(board_id=board_id, message_thread_id=thread_id)
+            session.add(topic)

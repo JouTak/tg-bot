@@ -1,5 +1,5 @@
 from source.config import WEB_CALDAV_URL, USERNAME, PASSWORD, COOLDOWN_TUESDAY, COOLDOWN_SUNDAY, COOLDOWN_DEFAULT, \
-    POLL_INTERVAL, WEB_APP_URL, UPDATE_INTERVAL, TIMEZONE
+    POLL_INTERVAL, WEB_APP_URL, UPDATE_INTERVAL, TIMEZONE, CALDAV_USERNAME, CALDAV_PASSWORD
 from source.connections.sender import send_message_limited
 from source.db.repos.users import get_tg_id_by_email, save_email_by_username
 from source.app_logging import logger
@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 from time import sleep
 from zoneinfo import ZoneInfo
+from copy import deepcopy
 
 import requests
 
@@ -27,6 +28,63 @@ PARSTAT_RU = {
     "NEEDS-ACTION": "Неизвестно"
 }
 
+def cleanup_uid(target_uid: str):
+    """
+    Оставляет только мастер-событие (RECURRENCE-ID=None)
+    для указанного UID.
+    """
+    start = datetime.now(TEAM_TZ)
+    end = start + timedelta(days=7)
+    client = DAVClient(WEB_CALDAV_URL, username=CALDAV_USERNAME, password=CALDAV_PASSWORD)
+    principal = client.principal()
+    for calendar in principal.calendars():
+        try:
+            events = calendar.date_search(start=start, end=end)
+            for event in events:
+                cal = Calendar.from_ical(event.data)
+                for component in cal.walk():
+                    if component.name == "VEVENT":
+                        vevents = [
+                            c for c in cal.subcomponents
+                            if getattr(c, "name", None) == "VEVENT"
+                        ]
+
+                        target_vevents = [
+                            v for v in vevents
+                            if str(v.get("UID")) == target_uid
+                        ]
+
+                        if not target_vevents:
+                            continue
+
+                        print(f"\nНайден UID={target_uid}")
+                        print(f"URL: {event.url}")
+                        print(f"VEVENT до очистки: {len(target_vevents)}")
+
+                        master = None
+
+                        for v in target_vevents:
+                            if v.get("RECURRENCE-ID") is None:
+                                master = v
+                                break
+
+                        if master is None:
+                            print("Мастер-событие не найдено!")
+                            return False
+
+                        new_cal = Calendar()
+                        for k, v in cal.items():
+                            new_cal.add(k, v)
+                        for component in cal.subcomponents:
+                            if getattr(component, "name", None) != "VEVENT":
+                                new_cal.add_component(component)
+
+                        new_cal.add_component(master)
+
+                        event.data = new_cal.to_ical()
+                        event.save()
+        except Exception as e:
+            print(e)
 
 def format_to_need_timezone(dt):
     """Приводит время к МСК и форматирует в ЧЧ:ММ"""
@@ -134,7 +192,7 @@ def get_calendar(teg_id):
     start = datetime.now(TEAM_TZ)
     end = start + timedelta(days=7)
     result = []
-    client = DAVClient(WEB_CALDAV_URL, username=USERNAME, password=PASSWORD)
+    client = DAVClient(WEB_CALDAV_URL, username=CALDAV_USERNAME, password=CALDAV_PASSWORD)
     principal = client.principal()
     for calendar in principal.calendars():
         try:
@@ -154,6 +212,9 @@ def get_calendar(teg_id):
 
                         start_dt = component.get("dtstart").dt if component.get("dtstart") else "Неизвестно"
                         end_dt = component.get("dtend").dt if component.get("dtend") else "Неизвестно"
+
+                        if component.get("dtstart").dt < start and component.get("dtstart").dt > end:
+                            continue
 
                         short_url = event_uid
 
@@ -251,7 +312,7 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
             return False
 
 
-        client = DAVClient(WEB_CALDAV_URL, username=USERNAME, password=PASSWORD)
+        client = DAVClient(WEB_CALDAV_URL, username=CALDAV_USERNAME, password=CALDAV_PASSWORD)
         principal = client.principal()
 
         target_event = None
@@ -259,12 +320,18 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
         calendars = principal.calendars()
         for calendar in calendars:
             try:
-                events = calendar.date_search(start=start, end=end)
+                events = calendar.date_search(start=start, end=end, expand=True)
                 for event in events:
                     ical = event.icalendar_instance
                     for component in ical.walk('VEVENT'):
                         if str(component.get('UID')) == event_uid:
                             target_event = event
+                            occurrence_date = component.get('DTSTART').dt
+                            if occurrence_date < start:
+                                occurrence_date += timedelta(days=7)
+                            elif occurrence_date > end:
+                                occurrence_date -= timedelta(days=7)
+
                             logger.info(f"Событие найдено в календаре '{calendar.name}'")
                             break
                     if target_event: break
@@ -313,7 +380,7 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
         return False
 
 def poll_events():
-    client = DAVClient(WEB_CALDAV_URL, username=USERNAME, password=PASSWORD)
+    client = DAVClient(WEB_CALDAV_URL, username=CALDAV_USERNAME, password=CALDAV_PASSWORD)
     principal = client.principal()
     logger.info(f"CALDAV: Запускается фоновый опрос, частота {POLL_INTERVAL} секунд!")
     while True:
