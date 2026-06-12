@@ -94,6 +94,24 @@ def send_message_limited(chat_id: int, text: str, **kwargs):
     except ApiException as e:
         logger.warning(f"Ошибка Telegram API при отправке в chat_id={chat_id}: {e}")
         return None
+
+
+def edit_message_limited(chat_id: int, message_id: int, text: str, **kwargs):
+    _global.wait()
+    _per_chat[chat_id].wait()
+
+    safe_text = _auto_html(text)
+    kwargs.pop("parse_mode", None)
+    kwargs["parse_mode"] = "HTML"
+    try:
+        return bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=safe_text, **kwargs)
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+        logger.warning(f"Не смог отправить сообщение в chat_id={chat_id}: сеть недоступна "
+                       f"({'таймаут' if isinstance(e, requests.exceptions.Timeout) else 'нет соединения'}).")
+        return None
+    except ApiException as e:
+        logger.warning(f"Ошибка Telegram API при отправке в chat_id={chat_id}: {e}")
+        return None
 #
 # def send_bulk_text(chat_id: int, lines: list[str], header: str | None = None,
 #                    footer: str | None = None, **kwargs):
