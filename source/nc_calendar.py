@@ -28,13 +28,105 @@ PARSTAT_RU = {
     "NEEDS-ACTION": "Неизвестно"
 }
 
+def msg_design_from_button(uid: str, teg_id: int, type_msg: int):
+    start = datetime.now(TEAM_TZ)
+    end = start + timedelta(days=6)
+    client = DAVClient(WEB_CALDAV_URL, username=CALDAV_USERNAME, password=CALDAV_PASSWORD)
+    principal = client.principal()
+    res = ''
+    status = ''
+    for calendar in principal.calendars():
+        try:
+            events = calendar.date_search(start=start, end=end)
+            for event in events:
+                cal = Calendar.from_ical(event.data)
+                for component in cal.walk():
+                    if component.name == "VEVENT" and uid == str(component.get("uid")):
+                        summary = str(component.get("summary", "Без названия"))
+                        description = str(component.get("description", "Нет описания"))
+                        location = str(component.get("location", "Не указана"))
+
+                        start_dt = component.get("dtstart").dt if component.get("dtstart") else "Неизвестно"
+                        end_dt = component.get("dtend").dt if component.get("dtend") else "Неизвестно"
+
+                        if isinstance(start_dt, datetime):
+                            start_dt_str = format_to_need_timezone(start_dt) if start_dt else "Неизвестно"
+                        else:
+                            start_dt_str = str(start_dt)
+
+                        if isinstance(end_dt, datetime):
+                            end_dt_str = format_to_need_timezone(end_dt) if end_dt else "Неизвестно"
+                        else:
+                            end_dt_str = str(end_dt)
+
+                        if type_msg == 2:
+                            res += (f'📅 *СЕГОДНЯ СОБЫТИЕ*\n'
+                                    f'{summary}\n'
+                                    f'{description}\n\n'
+                                    f'Локация: {location}\n\n'
+                                    f'Начало: {start_dt_str}\n'
+                                    f'Конец: {end_dt_str}\n\n')
+                        else:
+                            res += (f'📅 *СОБЫТИЕ*\n'
+                                    f'{summary}\n'
+                                    f'{description}\n\n'
+                                    f'Локация: {location}\n\n'
+                                    f'Начало: {start_dt_str}\n'
+                                    f'Конец: {end_dt_str}\n\n')
+
+                        attendees = get_all_participants(component)
+
+                        if attendees:
+                            for a in attendees:
+                                email = a.get('email')
+                                name = a.get('name')
+                                tg_id = get_tg_id_by_email(email)
+
+                                if a['role'] == "ORGANIZER" and tg_id is not None:
+                                    res += f"Организатор: [{name}](tg://user?id={tg_id})\n"
+                                    break
+
+                                elif a['role'] == "ORGANIZER" and tg_id is None:
+                                    res += f"Организатор: {name}\n"
+                                    break
+
+                            res += "👥 Участники:\n\\\\\\"
+                            for a in attendees:
+                                email = a.get('email')
+                                name = a.get('name')
+                                tg_id = get_tg_id_by_email(email)
+                                if a['role'] != "ORGANIZER" and tg_id is not None and tg_id == teg_id:
+                                    status = a['status']
+                                    res += f"[{name}](tg://user?id={tg_id}) — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
+                                    break
+
+                            for a in attendees:
+                                email = a.get('email')
+                                name = a.get('name')
+                                tg_id = get_tg_id_by_email(email)
+                                if a['role'] != "ORGANIZER" and tg_id is not None and tg_id != teg_id:
+                                    res += f"[{name}](tg://user?id={tg_id}) — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
+
+                                elif a['role'] != "ORGANIZER" and tg_id is None:
+                                    res += f"{name} — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
+
+                            if res[-1] == '\n': res = res[:-1]
+                            res += '///'
+
+                        return [res, status]
+
+        except Exception as e:
+            logger.error(f"CALDAV: {e}")
+            return None, None
+
+
 def cleanup_uid(target_uid: str):
     """
     Оставляет только мастер-событие (RECURRENCE-ID=None)
     для указанного UID.
     """
     start = datetime.now(TEAM_TZ)
-    end = start + timedelta(days=7)
+    end = start + timedelta(days=6)
     client = DAVClient(WEB_CALDAV_URL, username=CALDAV_USERNAME, password=CALDAV_PASSWORD)
     principal = client.principal()
     for calendar in principal.calendars():
@@ -190,7 +282,7 @@ def get_all_participants(component):
 
 def get_calendar(teg_id):
     start = datetime.now(TEAM_TZ)
-    end = start + timedelta(days=7)
+    end = start + timedelta(days=6)
     result = []
     client = DAVClient(WEB_CALDAV_URL, username=CALDAV_USERNAME, password=CALDAV_PASSWORD)
     principal = client.principal()
@@ -251,17 +343,28 @@ def get_calendar(teg_id):
                                     res += f"Организатор: {name}\n"
                                     break
 
-                        if attendees:
-                            res += "👥 Участники:\n"
+                            res += "👥 Участники:\n\\\\\\"
+
                             for a in attendees:
                                 email = a.get('email')
                                 name = a.get('name')
                                 tg_id = get_tg_id_by_email(email)
-                                if a['role'] != "ORGANIZER" and tg_id is not None:
+                                if a['role'] != "ORGANIZER" and tg_id is not None and teg_id == tg_id:
+                                    res += f"[{name}](tg://user?id={tg_id}) — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
+                                    break
+
+                            for a in attendees:
+                                email = a.get('email')
+                                name = a.get('name')
+                                tg_id = get_tg_id_by_email(email)
+                                if a['role'] != "ORGANIZER" and tg_id is not None and teg_id != tg_id:
                                     res += f"[{name}](tg://user?id={tg_id}) — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
 
                                 elif a['role'] != "ORGANIZER" and tg_id is None:
                                     res += f"{name} — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
+
+                            if res[-1] == '\n': res = res[:-1]
+                            res += '///'
 
                         if attendees:
                             for user in attendees:
@@ -274,16 +377,18 @@ def get_calendar(teg_id):
                                     markup = InlineKeyboardMarkup()
                                     if short_url is not None:
                                         accept = "success" if user['status'] == "ACCEPTED" else None
-                                        decline = "success" if user['status'] == "DECLINED" else None
+                                        decline = "danger" if user['status'] == "DECLINED" else None
                                         maybe = "success" if user['status'] == "TENTATIVE" else None
 
                                         btn_accept = InlineKeyboardButton("Принять", style = accept,
-                                                                          callback_data=f"cal_ACCEPTED_{short_url}_{user['status']}")
+                                                                          callback_data=f"c_ACCEPTED_{short_url}_{user['status']}_1")
                                         btn_decline = InlineKeyboardButton("Отклонить", style = decline,
-                                                                           callback_data=f"cal_DECLINED_{short_url}_{user['status']}")
+                                                                           callback_data=f"c_DECLINED_{short_url}_{user['status']}_1")
                                         btn_maybe = InlineKeyboardButton("Под вопросом", style = maybe,
-                                                                         callback_data=f"cal_TENTATIVE_{short_url}_{user['status']}")
-                                        markup.row(btn_accept, btn_decline)
+                                                                         callback_data=f"c_TENTATIVE_{short_url}_{user['status']}_1")
+                                        btn_update = InlineKeyboardButton("🔄",
+                                                                          callback_data=f"update_{short_url}_1")
+                                        markup.row(btn_accept, btn_update, btn_decline)
 
                                     result.append([res, markup])
                                     break
@@ -304,7 +409,7 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
     """
     try:
         start = datetime.now(TEAM_TZ)
-        end = start + timedelta(days=7)
+        end = start + timedelta(days=6)
 
         new_status = new_status.upper()
         if new_status not in ['ACCEPTED', 'DECLINED', 'TENTATIVE']:
@@ -326,12 +431,6 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
                     for component in ical.walk('VEVENT'):
                         if str(component.get('UID')) == event_uid:
                             target_event = event
-                            occurrence_date = component.get('DTSTART').dt
-                            if occurrence_date < start:
-                                occurrence_date += timedelta(days=7)
-                            elif occurrence_date > end:
-                                occurrence_date -= timedelta(days=7)
-
                             logger.info(f"Событие найдено в календаре '{calendar.name}'")
                             break
                     if target_event: break
@@ -406,7 +505,6 @@ def poll_events():
                     event_url = str(event.url)
 
                     for component in cal.walk():
-                        res = ''
                         if component.name == "VEVENT":
                             event_uid = str(component.get("uid"))
                             if component.get("uid") is None:
@@ -440,65 +538,77 @@ def poll_events():
                             else:
                                 end_dt_str = str(end_dt)
 
-                            res += (f'📅 *СЕГОДНЯ СОБЫТИЕ*\n'
-                                    f'{summary}\n'
-                                    f'{description}\n\n'
-                                    f'Локация: {location}\n\n'
-                                    f'Начало: {start_dt_str}\n'
-                                    f'Конец: {end_dt_str}\n\n')
+
 
                             attendees = get_all_participants(component)
 
                             if attendees:
-                                for a in attendees:
-                                    email = a.get('email')
-                                    name = a.get('name')
-                                    tg_id = get_tg_id_by_email(email)
-
-                                    if a['role'] == "ORGANIZER" and tg_id is not None:
-                                        res += f"Организатор: [{name}](tg://user?id={tg_id})\n"
-                                        break
-
-                                    elif a['role'] == "ORGANIZER" and tg_id is None:
-                                        res += f"Организатор: {name}\n"
-                                        break
-
-                            if attendees:
-                                res += "👥 Участники:\n"
-                                for a in attendees:
-                                    email = a.get('email')
-                                    name = a.get('name')
-                                    tg_id = get_tg_id_by_email(email)
-                                    if a['role'] != "ORGANIZER" and tg_id is not None:
-                                        res += f"[{name}](tg://user?id={tg_id}) — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
-
-                                    elif a['role'] != "ORGANIZER" and tg_id is None:
-                                        res += f"{name} — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
-
-                            if attendees:
-
                                 for user in attendees:
+                                    res = (f'📅 *СЕГОДНЯ СОБЫТИЕ*\n'
+                                           f'{summary}\n'
+                                           f'{description}\n\n'
+                                           f'Локация: {location}\n\n'
+                                           f'Начало: {start_dt_str}\n'
+                                           f'Конец: {end_dt_str}\n\n')
                                     email = user.get('email')
                                     if email is None:
                                         continue
-                                    tg_id = get_tg_id_by_email(email)
-                                    if tg_id:
+                                    teg_id = get_tg_id_by_email(email)
+
+                                    for a in attendees:
+                                        email = a.get('email')
+                                        name = a.get('name')
+                                        tg_id = get_tg_id_by_email(email)
+
+                                        if a['role'] == "ORGANIZER" and tg_id is not None:
+                                            res += f"Организатор: [{name}](tg://user?id={tg_id})\n"
+                                            break
+
+                                        elif a['role'] == "ORGANIZER" and tg_id is None:
+                                            res += f"Организатор: {name}\n"
+                                            break
+
+                                    res += "👥 Участники:\n\\\\\\"
+                                    for a in attendees:
+                                        email = a.get('email')
+                                        name = a.get('name')
+                                        tg_id = get_tg_id_by_email(email)
+                                        if a['role'] != "ORGANIZER" and tg_id is not None and teg_id == tg_id:
+                                            res += f"[{name}](tg://user?id={tg_id}) — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
+                                            break
+
+                                    for a in attendees:
+                                        email = a.get('email')
+                                        name = a.get('name')
+                                        tg_id = get_tg_id_by_email(email)
+                                        if a['role'] != "ORGANIZER" and tg_id is not None and teg_id != tg_id:
+                                            res += f"[{name}](tg://user?id={tg_id}) — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
+
+                                        elif a['role'] != "ORGANIZER" and tg_id is None:
+                                            res += f"{name} — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
+
+                                    if res[-1] == '\n': res = res[:-1]
+                                    res += '///'
+
+                                    if teg_id:
                                         markup = InlineKeyboardMarkup()
                                         if short_url is not None:
                                             accept = "success" if user['status'] == "ACCEPTED" else None
-                                            decline = "success" if user['status'] == "DECLINED" else None
+                                            decline = "danger" if user['status'] == "DECLINED" else None
                                             maybe = "success" if user['status'] == "TENTATIVE" else None
 
                                             btn_accept = InlineKeyboardButton("Принять", style=accept,
-                                                                              callback_data=f"cal_ACCEPTED_{short_url}_{user['status']}")
+                                                                              callback_data=f"c_ACCEPTED_{short_url}_{user['status']}_2")
                                             btn_decline = InlineKeyboardButton("Отклонить", style=decline,
-                                                                               callback_data=f"cal_DECLINED_{short_url}_{user['status']}")
+                                                                               callback_data=f"c_DECLINED_{short_url}_{user['status']}_2")
                                             btn_maybe = InlineKeyboardButton("Под вопросом", style=maybe,
-                                                                             callback_data=f"cal_TENTATIVE_{short_url}_{user['status']}")
+                                                                             callback_data=f"c_TENTATIVE_{short_url}_{user['status']}_2")
+                                            btn_update = InlineKeyboardButton("🔄",
+                                                                             callback_data=f"update_{short_url}_2")
 
-                                            markup.row(btn_accept, btn_decline)
+                                            markup.row(btn_accept, btn_update, btn_decline)
 
-                                        send_message_limited(tg_id, res, reply_markup=markup)
+                                        send_message_limited(teg_id, res, reply_markup=markup)
 
             except Exception as e:
                 logger.exception(f"CALDAV: ой {e}")

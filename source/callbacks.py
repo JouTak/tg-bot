@@ -4,8 +4,8 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from source.connections.bot_factory import bot
 from source.db.repos.users import delete_login_token, get_token, save_login_to_db_with_token, get_email_by_tg_id
 from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, WEB_APP_URL
-from source.connections.sender import send_message_limited
-from source.nc_calendar import update_event_partstat
+from source.connections.sender import send_message_limited, edit_message_limited
+from source.nc_calendar import update_event_partstat, msg_design_from_button
 from source.db.repos.caldav_calendar import get_name_by_id
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("move:"))
@@ -100,22 +100,24 @@ def check_login(call):
         bot.answer_callback_query(call.id, "Произошла ошибка или срок действия ссылки истек.", show_alert=True)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('cal_'))
+@bot.callback_query_handler(func=lambda call: call.data.startswith('c_'))
 def handle_cal(call):
     bot.answer_callback_query(call.id)
-    parts = call.data.split('_', 3)
-    if len(parts) < 4:
+    parts = call.data.split('_', 4)
+    if len(parts) < 5:
         return
 
     action = parts[1]  # ACCEPTED, DECLINED, TENTATIVE
     short_id = parts[2]
     status = parts[3]  # ACCEPTED, DECLINED, TENTATIVE
+    msg_type = int(parts[4]) # 1 2
+
+    res = ''
 
     if action == status:
         return
 
-    event_url = short_id
-    if not event_url:
+    if not short_id:
         return
 
     user_email = get_email_by_tg_id(call.from_user.id)
@@ -124,7 +126,7 @@ def handle_cal(call):
         send_message_limited(call.message.chat.id, "Не удалось найти ваш email в системе.")
         return
 
-    success = update_event_partstat(event_url, user_email, action)
+    success = update_event_partstat(short_id, user_email, action)
 
     if success:
         status_ru = {"ACCEPTED": "✅ Принято", "DECLINED": "❌ Отклонено", "TENTATIVE": "❓ Под вопросом"}
@@ -134,19 +136,69 @@ def handle_cal(call):
                 btn_parts = button.callback_data.split('_')
                 btn_action = btn_parts[1]
 
-                if btn_action == action:
+                if btn_action == action and action == "ACCEPTED":
                     button.style = "success"
+                elif btn_action == action and action == "DECLINED":
+                    button.style = "danger"
                 else:
                     button.style = None
 
-                button.callback_data = f"cal_{btn_action}_{short_id}_{action}"
+                if btn_parts[0] == 'c':
+                    button.callback_data = f"c_{btn_action}_{short_id}_{action}_{msg_type}"
+                else:
+                    button.callback_data = f"update_{short_id}_{msg_type}"
 
-
-        bot.edit_message_reply_markup(
+        res, stat = msg_design_from_button(short_id, call.from_user.id, msg_type)
+        if res is None: res = call.message.text
+        edit_message_limited(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
-            reply_markup = markup
+            text=res,
+            reply_markup=markup
         )
         send_message_limited(call.message.chat.id, f"Ваш статус изменен на: {status_ru.get(action)}")
     else:
         send_message_limited(call.message.chat.id, "Произошла ошибка при обновлении статуса в календаре.")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('update_'))
+def handle_cal(call):
+    bot.answer_callback_query(call.id)
+    parts = call.data.split('_', 2)
+    if len(parts) < 3:
+        return
+
+    short_id = parts[1]
+    msg_type = int(parts[2]) # 1 2
+
+    res, stat = msg_design_from_button(short_id, call.from_user.id, msg_type)
+
+    if not short_id:
+        return
+
+    markup = call.message.reply_markup
+    for row in markup.keyboard:
+        for button in row:
+            btn_parts = button.callback_data.split('_')
+            btn_action = btn_parts[1]
+
+            if btn_action == stat and stat == "ACCEPTED":
+                button.style = "success"
+            elif btn_action == stat and stat == "DECLINED":
+                button.style = "danger"
+            else:
+                button.style = None
+            if btn_parts[0] == 'c':
+                button.callback_data = f"c_{btn_action}_{short_id}_{stat}_{msg_type}"
+            else:
+                button.callback_data = call.data
+
+
+        if res == '': res = call.message.text
+
+        edit_message_limited(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=res,
+            reply_markup=markup
+        )
