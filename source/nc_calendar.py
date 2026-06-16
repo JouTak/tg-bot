@@ -8,7 +8,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from caldav import DAVClient, error
 from icalendar import Calendar, vText
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time
 
 from time import sleep
 from zoneinfo import ZoneInfo
@@ -26,6 +26,16 @@ PARSTAT_RU = {
     "DECLINED": "Не будет",
     "TENTATIVE": "Под вопросом",
     "NEEDS-ACTION": "Неизвестно"
+}
+
+WEEKDAY_RU = {
+    0: "ПОНЕДЕЛЬНИК",
+    1: "ВТОРНИК",
+    2: "СРЕДА",
+    3: "ЧЕТВЕРГ",
+    4: "ПЯТНИЦА",
+    5: "СУББОТА",
+    6: "ВОСКРЕСЕНЬЕ"
 }
 
 def msg_design_from_button(uid: str, teg_id: int, type_msg: int):
@@ -60,14 +70,14 @@ def msg_design_from_button(uid: str, teg_id: int, type_msg: int):
                             end_dt_str = str(end_dt)
 
                         if type_msg == 2:
-                            res += (f'📅 *СЕГОДНЯ СОБЫТИЕ*\n'
+                            res += (f'📅 *СЕГОДНЯ СОБЫТИЕ В {WEEKDAY_RU[start_dt.weekday()]}*\n'
                                     f'{summary}\n'
                                     f'{description}\n\n'
                                     f'Локация: {location}\n\n'
                                     f'Начало: {start_dt_str}\n'
                                     f'Конец: {end_dt_str}\n\n')
                         else:
-                            res += (f'📅 *СОБЫТИЕ*\n'
+                            res += (f'📅 *СОБЫТИЕ В {WEEKDAY_RU[start_dt.weekday()]}*\n'
                                     f'{summary}\n'
                                     f'{description}\n\n'
                                     f'Локация: {location}\n\n'
@@ -280,9 +290,13 @@ def get_all_participants(component):
     return participants
 
 
-def get_calendar(teg_id):
+def get_calendar(teg_id, cooldown, all_events=False):
     start = datetime.now(TEAM_TZ)
-    end = start + timedelta(days=6)
+    if cooldown == 1:
+        end = datetime.combine(start.date(), time.max)
+    else:
+        end = start + timedelta(days=cooldown)
+
     result = []
     client = DAVClient(WEB_CALDAV_URL, username=CALDAV_USERNAME, password=CALDAV_PASSWORD)
     principal = client.principal()
@@ -320,9 +334,9 @@ def get_calendar(teg_id):
                         else:
                             end_dt_str = str(end_dt)
 
-                        res += (f'📅 *СОБЫТИЕ*\n'
+                        res += (f'📅 *СОБЫТИЕ В {WEEKDAY_RU[start_dt.weekday()]}*\n'
                                 f'{summary}\n'
-                                f'{description}\n\n'
+                                f'{description}\n\n'                                
                                 f'Локация: {location}\n\n'
                                 f'Начало: {start_dt_str}\n'
                                 f'Конец: {end_dt_str}\n\n')
@@ -391,6 +405,10 @@ def get_calendar(teg_id):
                                         markup.row(btn_accept, btn_update, btn_decline)
 
                                     result.append([res, markup])
+                                    break
+
+                                elif all_events:
+                                    result.append([res, None])
                                     break
 
 
@@ -478,6 +496,80 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
         logger.exception(f"Критический сбой функции: {e}")
         return False
 
+
+def set_all_attendees_needs_action(event_uid: str) -> bool:
+    """
+    Устанавливает статус NEEDS-ACTION (Ожидает решения)
+    для всех участников (ATTENDEE) указанного события.
+
+    event_uid: UID события
+    """
+    try:
+        start = datetime.now(TEAM_TZ)
+        end = start + timedelta(days=7)
+
+        client = DAVClient(WEB_CALDAV_URL, username=CALDAV_USERNAME, password=CALDAV_PASSWORD)
+        principal = client.principal()
+
+        target_event = None
+
+        calendars = principal.calendars()
+        for calendar in calendars:
+            try:
+                events = calendar.date_search(start=start, end=end, expand=True)
+                for event in events:
+                    ical = event.icalendar_instance
+                    for component in ical.walk('VEVENT'):
+                        if str(component.get('UID')) == event_uid:
+                            target_event = event
+                            logger.info(f"Событие найдено в календаре '{calendar.name}', {component.get('summary')} {component.get('dtstart').dt}")
+                            break
+                    if target_event: break
+            except Exception as e:
+                logger.debug(f"Пропуск календаря {calendar.name}: {e}")
+                continue
+            if target_event: break
+
+        if not target_event:
+            logger.error(f"Не удалось найти событие {event_uid} для сброса статусов")
+            return False
+
+        ical = target_event.icalendar_instance
+        updated = False
+
+        for component in ical.walk('VEVENT'):
+            if str(component.get('UID')) != event_uid:
+                continue
+
+            attendees = component.get('ATTENDEE')
+            if not attendees:
+                continue
+
+            if not isinstance(attendees, list):
+                attendees = [attendees]
+
+            for attendee in attendees:
+                attendee.params['PARTSTAT'] = [vText('NEEDS-ACTION')]
+                attendee.params['RSVP'] = [vText('TRUE')]
+                updated = True
+
+        if updated:
+            target_event.icalendar_instance = ical
+            try:
+                target_event.save()
+                logger.info(f"Статус 'NEEDS-ACTION' успешно установлен для всех участников события {event_uid}")
+                return True
+            except Exception as e:
+                logger.error(f"Ошибка сохранения события {event_uid}: {e}")
+                return False
+        else:
+            logger.warning(f"У события {event_uid} нет списка участников (ATTENDEE). Изменять нечего.")
+            return False
+
+    except Exception as e:
+        logger.exception(f"Критический сбой функции set_all_attendees_needs_action: {e}")
+        return False
+
 def poll_events():
     client = DAVClient(WEB_CALDAV_URL, username=CALDAV_USERNAME, password=CALDAV_PASSWORD)
     principal = client.principal()
@@ -544,7 +636,7 @@ def poll_events():
 
                             if attendees:
                                 for user in attendees:
-                                    res = (f'📅 *СЕГОДНЯ СОБЫТИЕ*\n'
+                                    res = (f'📅 *СЕГОДНЯ СОБЫТИЕ В {WEEKDAY_RU[start_dt.weekday()]}*\n'
                                            f'{summary}\n'
                                            f'{description}\n\n'
                                            f'Локация: {location}\n\n'
@@ -614,5 +706,6 @@ def poll_events():
                 logger.exception(f"CALDAV: ой {e}")
         deleted_events_uids = all_sended_events_uids - current_found_uids
         for del_uid in deleted_events_uids:
+            #set_all_attendees_needs_action(del_uid)
             delete_event_sends(del_uid)
         sleep(POLL_INTERVAL)
