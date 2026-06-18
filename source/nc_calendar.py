@@ -588,11 +588,25 @@ def poll_events():
         end = start + timedelta(hours=cooldown)
         all_sended_events_uids = get_events_from_db()
         current_found_uids = set()
+        caldav_error_occurred = False
 
-        for calendar in principal.calendars():
+        try:
+            calendars = principal.calendars()
+        except Exception as e:
+            logger.error(f"CALDAV: Ошибка получения календарей: {e}")
+            sleep(POLL_INTERVAL)
+            continue
+
+        for calendar in calendars:
             try:
                 events = calendar.date_search(start=start, end=end)
-                for event in events:
+            except Exception as e:
+                logger.error(f"CALDAV: Ошибка поиска событий в календаре: {e}")
+                caldav_error_occurred = True
+                continue
+
+            for event in events:
+                try:
                     cal = Calendar.from_ical(event.data)
                     event_url = str(event.url)
 
@@ -702,10 +716,15 @@ def poll_events():
 
                                         send_message_limited(teg_id, res, reply_markup=markup)
 
-            except Exception as e:
-                logger.exception(f"CALDAV: ой {e}")
-        deleted_events_uids = all_sended_events_uids - current_found_uids
-        for del_uid in deleted_events_uids:
-            #set_all_attendees_needs_action(del_uid)
-            delete_event_sends(del_uid)
-        sleep(POLL_INTERVAL)
+                except Exception as e:
+                    logger.exception(f"CALDAV: ой {e}")
+
+            deleted_events_uids = all_sended_events_uids - current_found_uids
+            for del_uid in deleted_events_uids:
+                try:
+                    # set_all_attendees_needs_action(del_uid)
+                    delete_event_sends(del_uid)
+                except Exception as e:
+                    logger.error(f"CALDAV: Ошибка удаления события из БД: {e}")
+
+            sleep(POLL_INTERVAL)
