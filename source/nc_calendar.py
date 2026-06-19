@@ -623,14 +623,12 @@ def poll_events():
 
                             all_sended_events_uids.add(event_uid)
 
-                            save_event_sends(event_uid, event_url)
 
                             short_url = event_uid
 
                             summary = str(component.get("summary", "Без названия"))
                             description = str(component.get("description", "Нет описания"))
                             location = str(component.get("location", "Не указана"))
-
                             start_dt = component.get("dtstart").dt if component.get("dtstart") else "Неизвестно"
                             end_dt = component.get("dtend").dt if component.get("dtend") else "Неизвестно"
 
@@ -644,10 +642,7 @@ def poll_events():
                             else:
                                 end_dt_str = str(end_dt)
 
-
-
                             attendees = get_all_participants(component)
-
                             if attendees:
                                 for user in attendees:
                                     res = (f'📅 *СЕГОДНЯ СОБЫТИЕ В {WEEKDAY_RU[start_dt.weekday()]}*\n'
@@ -715,6 +710,7 @@ def poll_events():
                                             markup.row(btn_accept, btn_update, btn_decline)
 
                                         send_message_limited(teg_id, res, reply_markup=markup)
+                                        save_event_sends(event_uid, event_url)
 
                 except Exception as e:
                     logger.exception(f"CALDAV: ой {e}")
@@ -728,4 +724,4 @@ def poll_events():
                     except Exception as e:
                         logger.error(f"CALDAV: Ошибка удаления события из БД: {e}")
 
-            sleep(POLL_INTERVAL)
+        sleep(POLL_INTERVAL)
