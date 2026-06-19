@@ -719,12 +719,13 @@ def poll_events():
                 except Exception as e:
                     logger.exception(f"CALDAV: ой {e}")
 
-            deleted_events_uids = all_sended_events_uids - current_found_uids
-            for del_uid in deleted_events_uids:
-                try:
-                    # set_all_attendees_needs_action(del_uid)
-                    delete_event_sends(del_uid)
-                except Exception as e:
-                    logger.error(f"CALDAV: Ошибка удаления события из БД: {e}")
+            if not caldav_error_occurred:
+                deleted_events_uids = all_sended_events_uids - current_found_uids
+                for del_uid in deleted_events_uids:
+                    try:
+                        # set_all_attendees_needs_action(del_uid)
+                        delete_event_sends(del_uid)
+                    except Exception as e:
+                        logger.error(f"CALDAV: Ошибка удаления события из БД: {e}")
 
             sleep(POLL_INTERVAL)
