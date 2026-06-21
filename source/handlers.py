@@ -107,7 +107,7 @@ def show_user_cards(message):
         send_message_limited(chat_id, msg, reply_markup=kb)
 
 @bot.message_handler(commands=['calendar'], func=lambda msg: msg.chat.type == "private")
-def calendar_handler(message):
+def calendar_handler_1(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
 
@@ -116,12 +116,50 @@ def calendar_handler(message):
         send_message_limited(chat_id, "Команду могут использовать лишь члены команды ИТМОкрафт!")
         return
 
-    events = get_calendar(user_id)
+    events = get_calendar(user_id, 6)
     if events is None or events == []:
         send_message_limited(chat_id, "Ну это похоже ты не из нашей команды. Или нет ближайших событий.")
         return
 
     send_message_limited(chat_id, "События на неделю")
+    for e in events:
+        send_message_limited(chat_id, e[0], reply_markup=e[1])
+
+@bot.message_handler(commands=['calendar_total'], func=lambda msg: msg.chat.type == "private")
+def calendar_handler_2(message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+
+    saved_login = get_login_by_tg_id(user_id)
+    if not saved_login:
+        send_message_limited(chat_id, "Команду могут использовать лишь члены команды ИТМОкрафт!")
+        return
+
+    events = get_calendar(user_id, 6, all_events=True)
+    if events is None or events == []:
+        send_message_limited(chat_id, "Ну это похоже ты не из нашей команды. Или нет ближайших событий.")
+        return
+
+    send_message_limited(chat_id, "Все события на неделю")
+    for e in events:
+        send_message_limited(chat_id, e[0], reply_markup=e[1])
+
+@bot.message_handler(commands=['calendar_today'], func=lambda msg: msg.chat.type == "private")
+def calendar_handler_3(message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+
+    saved_login = get_login_by_tg_id(user_id)
+    if not saved_login:
+        send_message_limited(chat_id, "Команду могут использовать лишь члены команды ИТМОкрафт!")
+        return
+
+    events = get_calendar(user_id, 1)
+    if events is None or events == []:
+        send_message_limited(chat_id, "Нет ближайших событий.")
+        return
+
+    send_message_limited(chat_id, "События на этот день")
     for e in events:
         send_message_limited(chat_id, e[0], reply_markup=e[1])
 
