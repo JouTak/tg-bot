@@ -107,7 +107,7 @@ def show_user_cards(message):
         send_message_limited(chat_id, msg, reply_markup=kb)
 
 @bot.message_handler(commands=['calendar'], func=lambda msg: msg.chat.type == "private")
-def calendar_handler(message):
+def calendar_handler_1(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
 
@@ -126,7 +126,7 @@ def calendar_handler(message):
         send_message_limited(chat_id, e[0], reply_markup=e[1])
 
 @bot.message_handler(commands=['calendar_total'], func=lambda msg: msg.chat.type == "private")
-def calendar_handler(message):
+def calendar_handler_2(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
 
@@ -145,7 +145,7 @@ def calendar_handler(message):
         send_message_limited(chat_id, e[0], reply_markup=e[1])
 
 @bot.message_handler(commands=['calendar_today'], func=lambda msg: msg.chat.type == "private")
-def calendar_handler(message):
+def calendar_handler_3(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
 

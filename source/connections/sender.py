@@ -110,7 +110,7 @@ def edit_message_limited(chat_id: int, message_id: int, text: str, **kwargs):
                        f"({'таймаут' if isinstance(e, requests.exceptions.Timeout) else 'нет соединения'}).")
         return None
     except ApiException as e:
-        logger.warning(f"Не удалось изменить...")
+        logger.warning(f"Ошибка Telegram API при отправке в chat_id={chat_id}: {e}")
         return None
 #
 # def send_bulk_text(chat_id: int, lines: list[str], header: str | None = None,

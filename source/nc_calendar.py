@@ -35,7 +35,8 @@ WEEKDAY_RU = {
     3: "ЧЕТВЕРГ",
     4: "ПЯТНИЦА",
     5: "СУББОТА",
-    6: "ВОСКРЕСЕНЬЕ"
+    6: "ВОСКРЕСЕНЬЕ",
+    None: "ОПРЕДЕЛЕННЫЙ ДЕНЬ"
 }
 
 def msg_design_from_button(uid: str, teg_id: int, type_msg: int):
@@ -70,14 +71,14 @@ def msg_design_from_button(uid: str, teg_id: int, type_msg: int):
                             end_dt_str = str(end_dt)
 
                         if type_msg == 2:
-                            res += (f'📅 *СЕГОДНЯ СОБЫТИЕ В {WEEKDAY_RU[start_dt.weekday()]}*\n'
+                            res += (f'📅 *СЕГОДНЯ СОБЫТИЕ В {WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}*\n'
                                     f'{summary}\n'
                                     f'{description}\n\n'
                                     f'Локация: {location}\n\n'
                                     f'Начало: {start_dt_str}\n'
                                     f'Конец: {end_dt_str}\n\n')
                         else:
-                            res += (f'📅 *СОБЫТИЕ В {WEEKDAY_RU[start_dt.weekday()]}*\n'
+                            res += (f'📅 *СОБЫТИЕ В {WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}*\n'
                                     f'{summary}\n'
                                     f'{description}\n\n'
                                     f'Локация: {location}\n\n'
@@ -290,7 +291,7 @@ def get_all_participants(component):
     return participants
 
 
-def get_calendar(teg_id, cooldown, all_events=False):
+def get_calendar(teg_id, cooldown=6, all_events=False):
     start = datetime.now(TEAM_TZ)
     if cooldown == 1:
         end = datetime.combine(start.date(), time.max)
@@ -334,7 +335,7 @@ def get_calendar(teg_id, cooldown, all_events=False):
                         else:
                             end_dt_str = str(end_dt)
 
-                        res += (f'📅 *СОБЫТИЕ В {WEEKDAY_RU[start_dt.weekday()]}*\n'
+                        res += (f'📅 *СОБЫТИЕ В {WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}*\n'
                                 f'{summary}\n'
                                 f'{description}\n\n'                                
                                 f'Локация: {location}\n\n'
@@ -645,7 +646,7 @@ def poll_events():
                             attendees = get_all_participants(component)
                             if attendees:
                                 for user in attendees:
-                                    res = (f'📅 *СЕГОДНЯ СОБЫТИЕ В {WEEKDAY_RU[start_dt.weekday()]}*\n'
+                                    res = (f'📅 *СЕГОДНЯ СОБЫТИЕ В {WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}*\n'
                                            f'{summary}\n'
                                            f'{description}\n\n'
                                            f'Локация: {location}\n\n'
