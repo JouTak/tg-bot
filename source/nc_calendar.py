@@ -29,14 +29,14 @@ PARSTAT_RU = {
 }
 
 WEEKDAY_RU = {
-    0: "ПОНЕДЕЛЬНИК",
-    1: "ВТОРНИК",
-    2: "СРЕДА",
-    3: "ЧЕТВЕРГ",
-    4: "ПЯТНИЦА",
-    5: "СУББОТА",
-    6: "ВОСКРЕСЕНЬЕ",
-    None: "ОПРЕДЕЛЕННЫЙ ДЕНЬ"
+    0: " ПОНЕДЕЛЬНИК",
+    1: "О ВТОРНИК",
+    2: " СРЕДУ",
+    3: " ЧЕТВЕРГ",
+    4: " ПЯТНИЦУ",
+    5: " СУББОТУ",
+    6: " ВОСКРЕСЕНЬЕ",
+    None: " ОПРЕДЕЛЕННЫЙ ДЕНЬ"
 }
 
 def msg_design_from_button(uid: str, teg_id: int, type_msg: int):
@@ -71,14 +71,14 @@ def msg_design_from_button(uid: str, teg_id: int, type_msg: int):
                             end_dt_str = str(end_dt)
 
                         if type_msg == 2:
-                            res += (f'📅 *СЕГОДНЯ СОБЫТИЕ В {WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}*\n'
+                            res += (f'📅 *СЕГОДНЯ СОБЫТИЕ В{WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}*\n'
                                     f'{summary}\n'
                                     f'{description}\n\n'
                                     f'Локация: {location}\n\n'
                                     f'Начало: {start_dt_str}\n'
                                     f'Конец: {end_dt_str}\n\n')
                         else:
-                            res += (f'📅 *СОБЫТИЕ В {WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}*\n'
+                            res += (f'📅 *СОБЫТИЕ В{WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}*\n'
                                     f'{summary}\n'
                                     f'{description}\n\n'
                                     f'Локация: {location}\n\n'
@@ -294,7 +294,7 @@ def get_all_participants(component):
 def get_calendar(teg_id, cooldown=6, all_events=False):
     start = datetime.now(TEAM_TZ)
     if cooldown == 1:
-        end = datetime.combine(start.date(), time.max)
+        end = start.replace(hour=23, minute=59, second=59, microsecond=999999)
     else:
         end = start + timedelta(days=cooldown)
 
@@ -335,7 +335,7 @@ def get_calendar(teg_id, cooldown=6, all_events=False):
                         else:
                             end_dt_str = str(end_dt)
 
-                        res += (f'📅 *СОБЫТИЕ В {WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}*\n'
+                        res += (f'📅 *СОБЫТИЕ В{WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}*\n'
                                 f'{summary}\n'
                                 f'{description}\n\n'                                
                                 f'Локация: {location}\n\n'
@@ -403,7 +403,10 @@ def get_calendar(teg_id, cooldown=6, all_events=False):
                                                                          callback_data=f"c_TENTATIVE_{short_url}_{user['status']}_1")
                                         btn_update = InlineKeyboardButton("🔄",
                                                                           callback_data=f"update_{short_url}_1")
-                                        markup.row(btn_accept, btn_update, btn_decline)
+                                        if user['role'] != "ORGANIZER":
+                                            markup.row(btn_accept, btn_update, btn_decline)
+                                        else:
+                                            markup.row(btn_update)
 
                                     result.append([res, markup])
                                     break
@@ -646,7 +649,7 @@ def poll_events():
                             attendees = get_all_participants(component)
                             if attendees:
                                 for user in attendees:
-                                    res = (f'📅 *СЕГОДНЯ СОБЫТИЕ В {WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}*\n'
+                                    res = (f'📅 *СЕГОДНЯ СОБЫТИЕ В{WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}*\n'
                                            f'{summary}\n'
                                            f'{description}\n\n'
                                            f'Локация: {location}\n\n'
@@ -707,9 +710,10 @@ def poll_events():
                                                                              callback_data=f"c_TENTATIVE_{short_url}_{user['status']}_2")
                                             btn_update = InlineKeyboardButton("🔄",
                                                                              callback_data=f"update_{short_url}_2")
-
-                                            markup.row(btn_accept, btn_update, btn_decline)
-
+                                            if user['role'] != "ORGANIZER":
+                                                markup.row(btn_accept, btn_update, btn_decline)
+                                            else:
+                                                markup.row(btn_update)
                                         send_message_limited(teg_id, res, reply_markup=markup)
                                         save_event_sends(event_uid, event_url)
 
@@ -720,7 +724,7 @@ def poll_events():
             deleted_events_uids = all_sended_events_uids - current_found_uids
             for del_uid in deleted_events_uids:
                 try:
-                    # set_all_attendees_needs_action(del_uid)
+                    set_all_attendees_needs_action(del_uid)
                     delete_event_sends(del_uid)
                 except Exception as e:
                     logger.error(f"CALDAV: Ошибка удаления события из БД: {e}")
