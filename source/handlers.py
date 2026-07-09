@@ -135,7 +135,7 @@ def calendar_handler_2(message):
         send_message_limited(chat_id, "Команду могут использовать лишь члены команды ИТМОкрафт!")
         return
 
-    events = get_calendar(user_id, 6, all_events=True)
+    events = get_calendar(user_id, 7, all_events=True)
     if events is None or events == []:
         send_message_limited(chat_id, "Ну это похоже ты не из нашей команды. Или нет ближайших событий.")
         return
