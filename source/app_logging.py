@@ -33,7 +33,10 @@ def setup_logging():
     sh.setLevel(level)
     sh.setFormatter(fmt)
 
-    fh = FileHandler("bot.log", encoding="utf-8")
+    if not os.path.exists('logs/'):
+        os.makedirs('logs/')
+
+    fh = FileHandler("logs/bot.log", encoding="utf-8")
     fh.setLevel(level)
     fh.setFormatter(fmt)
 
