@@ -89,3 +89,5 @@ COOLDOWN_SUNDAY = int(os.getenv("COOLDOWN_SUNDAY", "10"))
 COOLDOWN_DEFAULT = int(os.getenv("COOLDOWN_DEFAULT", "2"))
 
 UPDATE_INTERVAL = int(os.getenv("UPDATE_INTERVAL", "1"))
+
+BUFF_SIZE = int(os.getenv("BUFF_SIZE", "128"))
