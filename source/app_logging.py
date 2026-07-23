@@ -1,11 +1,48 @@
 import os
 import logging
+import shutil
 from logging import FileHandler, StreamHandler, Formatter
 
-from source.config import APP_DEBUG
+from source.config import APP_DEBUG, BUFF_SIZE
 
 logger = logging.getLogger("source")
 _APP_DEBUG = APP_DEBUG == "1"
+
+class TrimFileHandler(FileHandler):
+    def __init__(self, filename, max_bytes, check_every=1000, **kwargs):
+        super().__init__(filename, **kwargs)
+        self.max_bytes = max_bytes
+        self.check_every = check_every
+        self.counter = 0
+
+    def emit(self, record):
+        self.counter += 1
+
+        if self.counter >= self.check_every:
+            self.counter = 0
+            self._trim_if_needed()
+
+        super().emit(record)
+
+    def _trim_if_needed(self):
+        size = os.path.getsize(self.baseFilename)
+        if size <= self.max_bytes:
+            return
+
+        self.stream.close()
+
+        tmp = self.baseFilename + ".tmp"
+
+        with open(self.baseFilename, "rb") as src:
+            src.seek(size - self.max_bytes // 2)
+
+            src.readline()
+
+            with open(tmp, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+
+        os.replace(tmp, self.baseFilename)
+        self.stream = self._open()
 
 
 def is_debug() -> bool:
@@ -33,7 +70,15 @@ def setup_logging():
     sh.setLevel(level)
     sh.setFormatter(fmt)
 
-    fh = FileHandler("bot.log", encoding="utf-8")
+    if not os.path.exists('logs/'):
+        os.makedirs('logs/')
+
+    fh = TrimFileHandler(
+        "logs/bot.log",
+        max_bytes=BUFF_SIZE * 1024 * 1024,
+        check_every=1000,
+        encoding="utf-8",
+    )
     fh.setLevel(level)
     fh.setFormatter(fmt)
 

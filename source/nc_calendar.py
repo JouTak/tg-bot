@@ -8,7 +8,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from caldav import DAVClient, error
 from icalendar import Calendar, vText
-from datetime import datetime, timedelta, timezone, time
+from datetime import datetime, timedelta, timezone, time, date
 
 from time import sleep
 from zoneinfo import ZoneInfo
@@ -295,6 +295,9 @@ def get_calendar(teg_id, cooldown=6, all_events=False):
     start = datetime.now(TEAM_TZ)
     if cooldown == 1:
         end = start.replace(hour=23, minute=59, second=59, microsecond=999999)
+    elif cooldown == 7:
+        start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = start + timedelta(days=cooldown - 1)
     else:
         end = start + timedelta(days=cooldown)
 
@@ -408,11 +411,11 @@ def get_calendar(teg_id, cooldown=6, all_events=False):
                                         else:
                                             markup.row(btn_update)
 
-                                    result.append([res, markup])
+                                    result.append((start_dt, [res, markup]))
                                     break
 
                                 elif all_events:
-                                    result.append([res, None])
+                                    result.append((start_dt, [res, None]))
                                     break
 
 
@@ -420,7 +423,20 @@ def get_calendar(teg_id, cooldown=6, all_events=False):
             logger.error(f"CALDAV: {e}")
             return None
 
-    return result
+    def get_sort_key(item):
+        dt = item[0]
+        if isinstance(dt, datetime):
+            return dt.timestamp()
+        elif isinstance(dt, date):
+            return datetime.combine(dt, datetime.min.time()).timestamp()
+
+        return float('inf')
+
+    result.sort(key=get_sort_key)
+
+    final_result = [item[1] for item in result]
+
+    return final_result
 
 
 def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> bool:

@@ -1,5 +1,6 @@
 .env
 bot.log
+logs/bot.log
 .idea
 project_bundle.py
 project_bundle.txt
