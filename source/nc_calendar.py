@@ -1,5 +1,5 @@
 from source.config import WEB_CALDAV_URL, USERNAME, PASSWORD, COOLDOWN_TUESDAY, COOLDOWN_SUNDAY, COOLDOWN_DEFAULT, \
-    POLL_INTERVAL, WEB_APP_URL, UPDATE_INTERVAL, TIMEZONE, CALDAV_USERNAME, CALDAV_PASSWORD
+    POLL_INTERVAL, WEB_APP_URL, UPDATE_INTERVAL, TIMEZONE, CALDAV_USERNAME, CALDAV_PASSWORD, CALDAV_COOLDOWNS
 from source.connections.sender import send_message_limited
 from source.db.repos.users import get_tg_id_by_email, save_email_by_username
 from source.app_logging import logger
@@ -12,7 +12,6 @@ from datetime import datetime, timedelta, timezone, time, date
 
 from time import sleep
 from zoneinfo import ZoneInfo
-from copy import deepcopy
 
 import requests
 
@@ -598,14 +597,8 @@ def poll_events():
         logger.info(f"CALDAV: Получаю события...")
 
         start = datetime.now(TEAM_TZ)
-        now_day = start.weekday()
-        cooldown = COOLDOWN_DEFAULT
-        if now_day == 3:
-            cooldown = COOLDOWN_TUESDAY
-        if now_day == 6:
-            cooldown = COOLDOWN_SUNDAY
 
-        end = start + timedelta(hours=cooldown)
+        end = start + timedelta(days=1)
         all_sended_events_uids = get_events_from_db()
         current_found_uids = set()
         caldav_error_occurred = False
@@ -636,13 +629,6 @@ def poll_events():
                             if component.get("uid") is None:
                                 event_uid = str(component.get("dtstart"))
 
-                            current_found_uids.add(event_uid)
-
-                            if event_uid in all_sended_events_uids:
-                                continue
-
-                            all_sended_events_uids.add(event_uid)
-
 
                             short_url = event_uid
 
@@ -651,6 +637,22 @@ def poll_events():
                             location = str(component.get("location", "Не указана"))
                             start_dt = component.get("dtstart").dt if component.get("dtstart") else "Неизвестно"
                             end_dt = component.get("dtend").dt if component.get("dtend") else "Неизвестно"
+                            cooldowns = []
+                            if not isinstance(start_dt, str):
+                                find_need_event = False
+                                for key, value in CALDAV_COOLDOWNS.items():
+                                    if summary.startswith(key):
+                                        for i in value:
+                                            if (start_dt - start) <= timedelta(minutes=i):
+                                                find_need_event = True
+                                                cooldowns = value
+                                                break
+                                        break
+
+                                if not find_need_event:
+                                    continue
+
+
 
                             if isinstance(start_dt, datetime):
                                 start_dt_str = format_to_need_timezone(start_dt) if start_dt else "Неизвестно"
@@ -663,7 +665,29 @@ def poll_events():
                                 end_dt_str = str(end_dt)
 
                             attendees = get_all_participants(component)
+                            name_for_send = ""
+                            teg_id_and_uid = event_uid
+                            list_not_send_tg_id = []
+                            now_cooldown_send = cooldowns[0]
                             if attendees:
+                                for user in attendees:
+                                    email = user.get('email')
+                                    if email is None:
+                                        continue
+                                    tg_id_found = get_tg_id_by_email(email)
+                                    for i in cooldowns:
+                                        teg_id_and_uid = f"{tg_id_found}_{i}_{event_uid}"
+                                        current_found_uids.add(teg_id_and_uid)
+                                        if teg_id_and_uid not in all_sended_events_uids:
+                                            now_cooldown_send = i
+                                            break
+
+                                    if teg_id_and_uid in all_sended_events_uids:
+                                        list_not_send_tg_id.append(tg_id_found)
+                                        continue
+
+                                    all_sended_events_uids.add(teg_id_and_uid)
+
                                 for user in attendees:
                                     res = (f'📅 *СЕГОДНЯ СОБЫТИЕ В{WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}*\n'
                                            f'{summary}\n'
@@ -696,6 +720,7 @@ def poll_events():
                                         tg_id = get_tg_id_by_email(email)
                                         if a['role'] != "ORGANIZER" and tg_id is not None and teg_id == tg_id:
                                             res += f"[{name}](tg://user?id={tg_id}) — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
+                                            name_for_send = name
                                             break
 
                                     for a in attendees:
@@ -711,7 +736,7 @@ def poll_events():
                                     if res[-1] == '\n': res = res[:-1]
                                     res += '///'
 
-                                    if teg_id:
+                                    if teg_id and teg_id not in list_not_send_tg_id:
                                         markup = InlineKeyboardMarkup()
                                         if short_url is not None:
                                             accept = "success" if user['status'] == "ACCEPTED" else None
@@ -731,7 +756,7 @@ def poll_events():
                                             else:
                                                 markup.row(btn_update)
                                         send_message_limited(teg_id, res, reply_markup=markup)
-                                        save_event_sends(event_uid, event_url)
+                                        save_event_sends(name_for_send, teg_id, now_cooldown_send, event_uid, event_url)
 
                 except Exception as e:
                     logger.exception(f"CALDAV: ой {e}")
@@ -740,8 +765,9 @@ def poll_events():
             deleted_events_uids = all_sended_events_uids - current_found_uids
             for del_uid in deleted_events_uids:
                 try:
-                    set_all_attendees_needs_action(del_uid)
-                    delete_event_sends(del_uid)
+                    uid_for_delete = del_uid.split('_')[-1]
+                    set_all_attendees_needs_action(uid_for_delete)
+                    delete_event_sends(uid_for_delete)
                 except Exception as e:
                     logger.error(f"CALDAV: Ошибка удаления события из БД: {e}")
 

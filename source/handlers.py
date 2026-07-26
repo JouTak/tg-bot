@@ -275,3 +275,5 @@ def save_login(message):
     #nc_login = message.text.strip()
     #save_login_to_db(chat_id, nc_login)
     send_message_limited(chat_id, f"Этот бот создан специально для организаторов клуба @ITMOcraft! Если ты у нас в команде, регистрируйся в боте через команду /register. \n\nИнтересует вступление в команду организаторов? Заполняй анкету: https://forms.yandex.ru/u/67773408068ff0452320c8b4!")
+
+
