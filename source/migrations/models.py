@@ -136,6 +136,8 @@ class CalDavSendData(Base):
     __tablename__ = "caldav_send_data"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=True)
+    tg_id = Column(BigInteger, nullable=True)
     event_name = Column(String(255), unique=True, nullable=False)
 
     sent_at = Column(
