@@ -88,6 +88,18 @@ COOLDOWN_TUESDAY = int(os.getenv("COOLDOWN_TUESDAY", "2"))
 COOLDOWN_SUNDAY = int(os.getenv("COOLDOWN_SUNDAY", "10"))
 COOLDOWN_DEFAULT = int(os.getenv("COOLDOWN_DEFAULT", "2"))
 
+CALDAV_COOLDOWNS = dict()
+
+for key, value in os.environ.items():
+    if key.startswith("CALDAV_COOLDOWN_"):
+        name = key[len("CALDAV_COOLDOWN_"):]
+        try:
+            numeric_value = int(value)
+        except ValueError:
+            numeric_value = value
+
+        CALDAV_COOLDOWNS[name] = numeric_value
+
 UPDATE_INTERVAL = int(os.getenv("UPDATE_INTERVAL", "1"))
 
 BUFF_SIZE = int(os.getenv("BUFF_SIZE", "128"))
