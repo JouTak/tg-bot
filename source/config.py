@@ -93,12 +93,8 @@ CALDAV_COOLDOWNS = dict()
 for key, value in os.environ.items():
     if key.startswith("CALDAV_COOLDOWN_"):
         name = key[len("CALDAV_COOLDOWN_"):]
-        try:
-            numeric_value = int(value)
-        except ValueError:
-            numeric_value = value
 
-        CALDAV_COOLDOWNS[name] = numeric_value
+        CALDAV_COOLDOWNS[name] = [int(i) for i in value.split(',')]
 
 UPDATE_INTERVAL = int(os.getenv("UPDATE_INTERVAL", "1"))
 
