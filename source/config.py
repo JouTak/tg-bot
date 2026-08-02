@@ -2,7 +2,6 @@ import os
 from dotenv import load_dotenv
 import subprocess
 from datetime import timezone, timedelta
-from zoneinfo import ZoneInfo
 
 load_dotenv()
 
