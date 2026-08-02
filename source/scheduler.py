@@ -6,10 +6,10 @@ from datetime import datetime, timezone, timedelta
 from collections import Counter
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from source.config import POLL_INTERVAL, EXCLUDED_CARD_IDS, ARCHIVE_AFTER_DAYS
+from source.config import POLL_INTERVAL, EXCLUDED_CARD_IDS, ARCHIVE_AFTER_DAYS, TIMEZONES
 from source.connections.sender import send_message_limited
 from source.connections.nextcloud_api import fetch_all_tasks, in_done_stack, archive_card, get_url_attachment
-from source.db.repos.users import get_user_map
+from source.db.repos.users import get_user_map, get_timezone
 from source.db.repos.tasks import (
     get_saved_tasks, save_task_to_db, update_task_in_db,
     get_task_assignees, save_task_assignee, delete_task_assignee,
@@ -23,6 +23,20 @@ from source.app_logging import logger, is_debug
 from source.logging_service import send_log
 from source.links import card_url
 
+def format_to_timezone(dt: datetime, tz: int) -> str:
+    """Преобразует datetime в указанный UTC-сдвиг и возвращает время ЧЧ:ММ."""
+    if not isinstance(dt, datetime):
+        return str(dt)
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    tz = TIMEZONES.get(tz)
+    if tz is None:
+        logger.error(f"CALDAV: Неизвестный UTC-сдвиг: {tz}")
+        tz = 3
+
+    return dt.astimezone(tz).strftime("%y-%m-%d %H:%M")
 
 def change_description(old_description, new_description):
     """
@@ -191,7 +205,7 @@ def poll_new_tasks():
                     nd = item['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if item[
                         'duedate'] else None
                     if od != nd:
-                        changes.append(f"Due: `{od or '—'}` → `{nd or '—'}`")
+                        changes.append([saved['duedate'], item['duedate']])
                     if saved['title'] != item['title']:
                         changes.append(f"Заголовок: `{saved['title']}` → `{item['title']}`")
                     if saved['description'] != item['description']:
@@ -349,12 +363,20 @@ def poll_new_tasks():
                                     text=f"➡ {item.get('next_stack_title')}",
                                     callback_data=f"move:{item['board_id']}:{item['stack_id']}:{card_id}:{next_stack_id}"
                                 ))
+
+                            need_zone = get_timezone(tg_id)
+                            duedat = item['duedate'].dt if item['duedate'] else "—"
+                            if isinstance(duedat, datetime):
+                                duedat_str = format_to_timezone(duedat, tz=need_zone) if duedat else "—"
+                            else:
+                                duedat_str = str(duedat)
+
                             user_msg = (
                                 f"🆕 Новая задача: *{item['title']}*\n"
                                 f"Labels: {''.join(f'[{_to_hashtag(lab)}]' for lab in item['labels']) or '—'}\n"
                                 f"Board: {item['board_title']}\n"
                                 f"Column: {item['stack_title']}\n"
-                                f"Due: {item['duedate'] or '—'}\n"
+                                f"Due: {duedat_str}\n"
                                 f"Description: \n\\\\\\{item['description'] or '—'}///"
                             )
                             kb.add(
@@ -384,11 +406,41 @@ def poll_new_tasks():
                     kb = InlineKeyboardMarkup()
                     kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                     for tg_id in tg_ids:
+                        need_zone = get_timezone(tg_id)
+                        for i in range(len(changes)):
+                            if isinstance(changes[i], list):
+                                od = changes[i][0].dt if changes[i][0] else "—"
+                                if isinstance(od, datetime):
+                                    od = format_to_timezone(od, tz=need_zone) if od else "—"
+                                else:
+                                    od = str(od)
+
+                                nd = changes[i][1].dt if changes[i][1] else "—"
+                                if isinstance(nd, datetime):
+                                    nd = format_to_timezone(nd, tz=need_zone) if nd else "—"
+                                else:
+                                    nd = str(nd)
+                                changes[i] = f"Due: `{od or '—'}` → `{nd or '—'}`"
                         send_message_limited(
                             tg_id,
                             f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
                             reply_markup=kb,
                         )
+
+                    for i in range(len(changes)):
+                        if isinstance(changes[i], list):
+                            od = changes[i][0].dt if changes[i][0] else "—"
+                            if isinstance(od, datetime):
+                                od = format_to_timezone(od, tz=3) if od else "—"
+                            else:
+                                od = str(od)
+
+                            nd = changes[i][1].dt if changes[i][1] else "—"
+                            if isinstance(nd, datetime):
+                                nd = format_to_timezone(nd, tz=3) if nd else "—"
+                            else:
+                                nd = str(nd)
+                            changes[i] = f"Due: `{od or '—'}` → `{nd or '—'}`"
                     send_log(
                         f"✏️ *Изменения в карточке* «{item['title']}»:\n" + "\n".join(changes),
                         board_id=item['board_id'],

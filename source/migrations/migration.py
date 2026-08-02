@@ -4,9 +4,9 @@ from alembic import command
 from alembic.util.exc import CommandError
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
-from sqlalchemy import create_engine
 from sqlalchemy import create_engine, inspect, text
 from source.db.db import Base, DATABASE_URL
+from source.app_logging import logger
 import datetime
 
 def get_alembic_config():
@@ -27,29 +27,32 @@ def auto_migrate():
     engine = create_engine(db_url)
 
     with engine.connect() as connection:
-        print("Синхронизация с существующими миграциями...")
+        logger.info("Синхронизация с существующими миграциями...")
         try:
             command.upgrade(cfg, "head")
         except CommandError as e:
             if "Can't locate revision identified by" not in str(e):
                 raise
 
-            print(
+            logger.info(
                 "Обнаружена неизвестная ревизия Alembic в базе. "
                 "Очищаем alembic_version и пересинхронизируемся с текущим head."
             )
-            if inspect(connection).has_table("alembic_version"):
-                with connection.begin():
-                    connection.execute(text("DELETE FROM alembic_version"))
-            command.upgrade(cfg, "head")
+            with engine.connect() as conn:
+                if inspect(conn).has_table("alembic_version"):
+                    conn.execute(text("DELETE FROM alembic_version"))
+                    conn.commit()
+
+            command.stamp(cfg, "head")
+
         mc = MigrationContext.configure(connection)
         diff = compare_metadata(mc, Base.metadata)
 
         if not diff:
-            print("Изменений в моделях не найдено. База актуальна.")
+            logger.info("Изменений в моделях не найдено. База актуальна.")
             return
 
-        print(f"Обнаружены изменения: {diff}")
+        logger.info(f"Обнаружены изменения: {diff}")
 
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
 
@@ -59,10 +62,10 @@ def auto_migrate():
                 message=f"auto_migration_{timestamp}",
                 autogenerate=True
             )
-            print(f"Создан новый файл миграции.")
+            logger.info(f"Создан новый файл миграции.")
 
             command.upgrade(cfg, "head")
-            print("База успешно обновлена!")
+            logger.info("База успешно обновлена!")
 
         except Exception as e:
-            print(f"Ошибка при создании миграции: {e}")
+            logger.error(f"Ошибка при создании миграции: {e}")

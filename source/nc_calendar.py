@@ -1,7 +1,7 @@
 from source.config import WEB_CALDAV_URL, USERNAME, PASSWORD, COOLDOWN_TUESDAY, COOLDOWN_SUNDAY, COOLDOWN_DEFAULT, \
-    POLL_INTERVAL, WEB_APP_URL, UPDATE_INTERVAL, TIMEZONE, CALDAV_USERNAME, CALDAV_PASSWORD, CALDAV_COOLDOWNS
+    POLL_INTERVAL, WEB_APP_URL, UPDATE_INTERVAL, TIMEZONE, CALDAV_USERNAME, CALDAV_PASSWORD, CALDAV_COOLDOWNS, TIMEZONES
 from source.connections.sender import send_message_limited
-from source.db.repos.users import get_tg_id_by_email, save_email_by_username
+from source.db.repos.users import get_tg_id_by_email, save_email_by_username, get_timezone
 from source.app_logging import logger
 from source.db.repos.caldav_calendar import get_events_from_db, save_event_sends, delete_event_sends, get_id_by_name
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -59,13 +59,15 @@ def msg_design_from_button(uid: str, teg_id: int, type_msg: int):
                         start_dt = component.get("dtstart").dt if component.get("dtstart") else "Неизвестно"
                         end_dt = component.get("dtend").dt if component.get("dtend") else "Неизвестно"
 
+                        tz_user = get_timezone(teg_id)
+
                         if isinstance(start_dt, datetime):
-                            start_dt_str = format_to_need_timezone(start_dt) if start_dt else "Неизвестно"
+                            start_dt_str = format_to_timezone(start_dt, tz=tz_user) if start_dt else "Неизвестно"
                         else:
                             start_dt_str = str(start_dt)
 
                         if isinstance(end_dt, datetime):
-                            end_dt_str = format_to_need_timezone(end_dt) if end_dt else "Неизвестно"
+                            end_dt_str = format_to_timezone(end_dt, tz=tz_user) if end_dt else "Неизвестно"
                         else:
                             end_dt_str = str(end_dt)
 
@@ -188,15 +190,20 @@ def cleanup_uid(target_uid: str):
         except Exception as e:
             print(e)
 
-def format_to_need_timezone(dt):
-    """Приводит время к МСК и форматирует в ЧЧ:ММ"""
+def format_to_timezone(dt: datetime, tz: int) -> str:
+    """Преобразует datetime в указанный UTC-сдвиг и возвращает время ЧЧ:ММ."""
     if not isinstance(dt, datetime):
         return str(dt)
 
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
 
-    return dt.astimezone(TEAM_TZ).strftime("%H:%M")
+    tz = TIMEZONES.get(tz)
+    if tz is None:
+        logger.error(f"CALDAV: Неизвестный UTC-сдвиг: {tz}")
+        tz = 3
+
+    return dt.astimezone(tz).strftime("%H:%M")
 
 def sync_nextcloud_users():
     """
@@ -322,18 +329,20 @@ def get_calendar(teg_id, cooldown=6, all_events=False):
                         start_dt = component.get("dtstart").dt if component.get("dtstart") else "Неизвестно"
                         end_dt = component.get("dtend").dt if component.get("dtend") else "Неизвестно"
 
+                        tz_user = get_timezone(teg_id)
+
                         if component.get("dtstart").dt < start and component.get("dtstart").dt > end:
                             continue
 
                         short_url = event_uid
 
                         if isinstance(start_dt, datetime):
-                            start_dt_str = format_to_need_timezone(start_dt) if start_dt else "Неизвестно"
+                            start_dt_str = format_to_timezone(start_dt, tz=tz_user) if start_dt else "Неизвестно"
                         else:
                             start_dt_str = str(start_dt)
 
                         if isinstance(end_dt, datetime):
-                            end_dt_str = format_to_need_timezone(end_dt) if end_dt else "Неизвестно"
+                            end_dt_str = format_to_timezone(end_dt, tz=tz_user) if end_dt else "Неизвестно"
                         else:
                             end_dt_str = str(end_dt)
 
@@ -654,15 +663,7 @@ def poll_events():
 
 
 
-                            if isinstance(start_dt, datetime):
-                                start_dt_str = format_to_need_timezone(start_dt) if start_dt else "Неизвестно"
-                            else:
-                                start_dt_str = str(start_dt)
 
-                            if isinstance(end_dt, datetime):
-                                end_dt_str = format_to_need_timezone(end_dt) if end_dt else "Неизвестно"
-                            else:
-                                end_dt_str = str(end_dt)
 
                             attendees = get_all_participants(component)
                             name_for_send = ""
@@ -689,16 +690,31 @@ def poll_events():
                                     all_sended_events_uids.add(teg_id_and_uid)
 
                                 for user in attendees:
+                                    email = user.get('email')
+                                    if email is None:
+                                        continue
+                                    teg_id = get_tg_id_by_email(email)
+
+                                    tz_user = get_timezone(teg_id)
+
+                                    if isinstance(start_dt, datetime):
+                                        start_dt_str = format_to_timezone(start_dt, tz=tz_user) if start_dt else "Неизвестно"
+                                    else:
+                                        start_dt_str = str(start_dt)
+
+                                    if isinstance(end_dt, datetime):
+                                        end_dt_str = format_to_timezone(end_dt, tz=tz_user) if end_dt else "Неизвестно"
+                                    else:
+                                        end_dt_str = str(end_dt)
+
+
                                     res = (f'📅 *СЕГОДНЯ СОБЫТИЕ В{WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}*\n'
                                            f'{summary}\n'
                                            f'{description}\n\n'
                                            f'Локация: {location}\n\n'
                                            f'Начало: {start_dt_str}\n'
                                            f'Конец: {end_dt_str}\n\n')
-                                    email = user.get('email')
-                                    if email is None:
-                                        continue
-                                    teg_id = get_tg_id_by_email(email)
+
 
                                     for a in attendees:
                                         email = a.get('email')
