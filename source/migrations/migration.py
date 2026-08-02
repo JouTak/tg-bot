@@ -38,10 +38,13 @@ def auto_migrate():
                 "Обнаружена неизвестная ревизия Alembic в базе. "
                 "Очищаем alembic_version и пересинхронизируемся с текущим head."
             )
-            if inspect(connection).has_table("alembic_version"):
-                with connection.begin():
-                    connection.execute(text("DELETE FROM alembic_version"))
-            command.upgrade(cfg, "head")
+            with engine.connect() as conn:
+                if inspect(conn).has_table("alembic_version"):
+                    conn.execute(text("DELETE FROM alembic_version"))
+                    conn.commit()
+
+            command.stamp(cfg, "head")
+
         mc = MigrationContext.configure(connection)
         diff = compare_metadata(mc, Base.metadata)
 

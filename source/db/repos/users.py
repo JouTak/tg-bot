@@ -68,6 +68,20 @@ def save_email_by_username(nc_email: str, nc_login: str) -> None:
         if user:
             user.nc_email = nc_email
 
+def save_timezone(tg_id: int, timezone: int) -> None:
+    """Сохраняет временную зону."""
+    with get_session() as session:
+        stmt = select(User).where(User.tg_id == tg_id)
+        user = session.execute(stmt).scalar_one_or_none()
+        if user:
+            user.nc_time_zone = timezone
+
+def get_timezone(tg_id: int) -> Optional[int]:
+    """Возвращает временную зону."""
+    with get_session() as session:
+        tzone = session.get(User, tg_id)
+        return tzone.nc_time_zone if tzone else 3
+
 
 def get_user_list() -> List[Tuple[int, str]]:
     """Возвращает список всех пользователей в формате [(tg_id, nc_login)]."""
