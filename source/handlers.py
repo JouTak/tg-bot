@@ -3,7 +3,7 @@ from telebot.types import (InlineKeyboardMarkup, InlineKeyboardButton, WebAppInf
 from source.app_logging import logger
 from source.connections.bot_factory import bot
 from source.connections.sender import send_message_limited
-from source.db.repos.users import get_login_by_tg_id, save_login_to_db, save_login_token, delete_login_token, get_token, get_nc_token, get_email_by_tg_id
+from source.db.repos.users import get_login_by_tg_id, save_login_to_db, save_login_token, delete_login_token, get_token, get_nc_token, get_email_by_tg_id, save_timezone
 from source.db.repos.tasks import save_task_to_db, get_tasks_from_users, save_task_comment, get_task_stat, upsert_task_stats
 from source.db.repos.boards import save_board_topic
 from source.connections.nextcloud_api import fetch_user_tasks, get_board_title
@@ -275,5 +275,23 @@ def save_login(message):
     #nc_login = message.text.strip()
     #save_login_to_db(chat_id, nc_login)
     send_message_limited(chat_id, f"Этот бот создан специально для организаторов клуба @ITMOcraft! Если ты у нас в команде, регистрируйся в боте через команду /register. \n\nИнтересует вступление в команду организаторов? Заполняй анкету: https://forms.yandex.ru/u/67773408068ff0452320c8b4!")
+
+
+@bot.message_handler(commands=['timezone'], func=lambda msg: msg.chat.type == "private" and msg.text.startswith('/'))
+def timezone_handler(message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+
+    command_data = message.text.split()
+    if len(command_data) < 2:
+        send_message_limited(chat_id, "Формат: \"/timezone [+/-]N\"\nПример: /timezone +4\nВремя ставить в формате UTC")
+        return
+    try:
+        save_timezone(user_id, int(command_data[1]))
+    except Exception as e:
+        logger.error("TIMEZONE: ой")
+
+
+    send_message_limited(chat_id, f"Твоя зона изменена, поздравляю с переездом!")
 
 

@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 import subprocess
+from datetime import timezone, timedelta
 
 load_dotenv()
 
@@ -99,3 +100,8 @@ for key, value in os.environ.items():
 UPDATE_INTERVAL = int(os.getenv("UPDATE_INTERVAL", "1"))
 
 BUFF_SIZE = int(os.getenv("BUFF_SIZE", "128"))
+
+TIMEZONES = {
+    i: timezone(timedelta(hours=i))
+    for i in range(-12, 15)
+}
