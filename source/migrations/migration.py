@@ -4,7 +4,6 @@ from alembic import command
 from alembic.util.exc import CommandError
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
-from sqlalchemy import create_engine
 from sqlalchemy import create_engine, inspect, text
 from source.db.db import Base, DATABASE_URL
 from source.app_logging import logger
