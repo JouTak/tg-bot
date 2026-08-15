@@ -16,7 +16,7 @@ from icalendar import Calendar, vText
 from datetime import datetime, timedelta, timezone, time, date
 
 from time import sleep
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 
@@ -627,12 +627,15 @@ def poll_events():
     while True:
         logger.info(f"CALDAV: Получаю события...")
 
-        start = datetime.now(TEAM_TZ)
-
-        end = start + timedelta(days=1)
-        all_sended_events_uids = get_events_from_db()
-        current_found_uids = set()
-        caldav_error_occurred = False
+        now_utc = datetime.now(timezone.utc)
+        largest_cooldown = max(
+            (value for values in CALDAV_COOLDOWNS.values() for value in values),
+            default=24 * 60,
+        )
+        end_utc = now_utc + timedelta(minutes=max(24 * 60, largest_cooldown))
+        saved_event_keys = get_events_from_db()
+        observed_event_keys = set()
+        scan_complete = True
 
         try:
             calendars = principal.calendars()
@@ -643,10 +646,11 @@ def poll_events():
 
         for calendar in calendars:
             try:
-                events = calendar.date_search(start=start, end=end)
+                # Expanded occurrences безопасны для чтения и не сохраняются обратно.
+                events = calendar.date_search(start=now_utc, end=end_utc, expand=True)
             except Exception as e:
                 logger.error(f"CALDAV: Ошибка поиска событий в календаре: {e}")
-                caldav_error_occurred = True
+                scan_complete = False
                 continue
 
             for event in events:
@@ -655,157 +659,127 @@ def poll_events():
                     event_url = str(event.url)
 
                     for component in cal.walk():
-                        if component.name == "VEVENT":
-                            event_uid = str(component.get("uid"))
-                            if component.get("uid") is None:
-                                event_uid = str(component.get("dtstart"))
+                        if component.name != "VEVENT":
+                            continue
+                        start_property = component.get("dtstart")
+                        if start_property is None:
+                            scan_complete = False
+                            continue
+                        if not isinstance(start_property.dt, datetime):
+                            continue
 
+                        event_uid = str(component.get("uid") or start_property)
+                        summary = str(component.get("summary", "Без названия"))
+                        description = str(component.get("description", "Нет описания"))
+                        location = str(component.get("location", "Не указана"))
+                        cooldowns = next(
+                            (values for prefix, values in CALDAV_COOLDOWNS.items()
+                             if summary.startswith(prefix)),
+                            [],
+                        )
+                        if not cooldowns:
+                            continue
 
-                            short_url = event_uid
+                        attendees = get_all_participants(component)
+                        for user in attendees:
+                            teg_id = get_tg_id_by_email(user.get('email'))
+                            if teg_id is None:
+                                continue
+                            try:
+                                tz_user = get_timezone(teg_id)
+                                start_dt = _localize_ical_property(start_property, tz_user)
+                                end_dt = _localize_ical_property(component.get("dtend"), tz_user)
+                            except (OSError, ValueError, ZoneInfoNotFoundError) as e:
+                                scan_complete = False
+                                logger.error(f"CALDAV: Неизвестный TZID у события {event_uid}: {e}")
+                                continue
 
-                            summary = str(component.get("summary", "Без названия"))
-                            description = str(component.get("description", "Нет описания"))
-                            location = str(component.get("location", "Не указана"))
-                            start_dt = component.get("dtstart").dt if component.get("dtstart") else "Неизвестно"
-                            end_dt = component.get("dtend").dt if component.get("dtend") else "Неизвестно"
-                            cooldowns = []
-                            if not isinstance(start_dt, str):
-                                find_need_event = False
-                                for key, value in CALDAV_COOLDOWNS.items():
-                                    if summary.startswith(key):
-                                        for i in value:
-                                            if (start_dt - start) <= timedelta(minutes=i):
-                                                find_need_event = True
-                                                cooldowns = value
-                                                break
-                                        break
+                            start_instant = _as_datetime(start_dt, tz_user)
+                            if start_instant is None:
+                                scan_complete = False
+                                continue
+                            until_start = start_instant.astimezone(timezone.utc) - now_utc
+                            if not timedelta() <= until_start <= timedelta(minutes=max(cooldowns)):
+                                continue
 
-                                if not find_need_event:
-                                    continue
+                            keys = [(teg_id, cooldown, event_uid) for cooldown in cooldowns]
+                            observed_event_keys.update(keys)
+                            pending_key = next(
+                                (key for key in keys
+                                 if key not in saved_event_keys
+                                 and until_start <= timedelta(minutes=key[1])),
+                                None,
+                            )
+                            if pending_key is None:
+                                continue
 
+                            res = (f'📅 *СЕГОДНЯ СОБЫТИЕ В{WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}*\n'
+                                   f'{summary}\n{description}\n\n'
+                                   f'Локация: {location}\n\n'
+                                   f'Начало: {_format_event_time(start_dt)}\n'
+                                   f'Конец: {_format_event_time(end_dt)}\n\n')
 
-
-
-
-                            attendees = get_all_participants(component)
-                            name_for_send = ""
-                            teg_id_and_uid = event_uid
-                            list_not_send_tg_id = []
-                            now_cooldown_send = cooldowns[0]
-                            if attendees:
-                                for user in attendees:
-                                    email = user.get('email')
-                                    if email is None:
-                                        continue
-                                    tg_id_found = get_tg_id_by_email(email)
-                                    for i in cooldowns:
-                                        teg_id_and_uid = f"{tg_id_found}_{i}_{event_uid}"
-                                        current_found_uids.add(teg_id_and_uid)
-                                        if teg_id_and_uid not in all_sended_events_uids:
-                                            now_cooldown_send = i
-                                            break
-
-                                    if teg_id_and_uid in all_sended_events_uids:
-                                        list_not_send_tg_id.append(tg_id_found)
-                                        continue
-
-                                    all_sended_events_uids.add(teg_id_and_uid)
-
-                                for user in attendees:
-                                    email = user.get('email')
-                                    if email is None:
-                                        continue
-                                    teg_id = get_tg_id_by_email(email)
-
-                                    tz_user = get_timezone(teg_id)
-
-                                    if isinstance(start_dt, datetime):
-                                        start_dt_str = format_to_timezone(start_dt, tz=tz_user) if start_dt else "Неизвестно"
+                            name_for_send = user.get('name', '')
+                            for participant in attendees:
+                                participant_id = get_tg_id_by_email(participant.get('email'))
+                                name = participant.get('name')
+                                if participant['role'] == "ORGANIZER":
+                                    if participant_id is not None:
+                                        res += f"Организатор: [{name}](tg://user?id={participant_id})\n"
                                     else:
-                                        start_dt_str = str(start_dt)
+                                        res += f"Организатор: {name}\n"
+                                    break
 
-                                    if isinstance(end_dt, datetime):
-                                        end_dt_str = format_to_timezone(end_dt, tz=tz_user) if end_dt else "Неизвестно"
-                                    else:
-                                        end_dt_str = str(end_dt)
+                            res += "👥 Участники:\n\\\\\\"
+                            ordered_attendees = sorted(
+                                (a for a in attendees if a['role'] != "ORGANIZER"),
+                                key=lambda a: get_tg_id_by_email(a.get('email')) != teg_id,
+                            )
+                            for participant in ordered_attendees:
+                                participant_id = get_tg_id_by_email(participant.get('email'))
+                                name = participant.get('name')
+                                status = PARSTAT_RU.get(participant['status'], 'Неизвестно')
+                                if participant_id is not None:
+                                    res += f"[{name}](tg://user?id={participant_id}) — {status}\n"
+                                else:
+                                    res += f"{name} — {status}\n"
+                            if res[-1] == '\n':
+                                res = res[:-1]
+                            res += '///'
 
-
-                                    res = (f'📅 *СЕГОДНЯ СОБЫТИЕ В{WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}*\n'
-                                           f'{summary}\n'
-                                           f'{description}\n\n'
-                                           f'Локация: {location}\n\n'
-                                           f'Начало: {start_dt_str}\n'
-                                           f'Конец: {end_dt_str}\n\n')
-
-
-                                    for a in attendees:
-                                        email = a.get('email')
-                                        name = a.get('name')
-                                        tg_id = get_tg_id_by_email(email)
-
-                                        if a['role'] == "ORGANIZER" and tg_id is not None:
-                                            res += f"Организатор: [{name}](tg://user?id={tg_id})\n"
-                                            break
-
-                                        elif a['role'] == "ORGANIZER" and tg_id is None:
-                                            res += f"Организатор: {name}\n"
-                                            break
-
-                                    res += "👥 Участники:\n\\\\\\"
-                                    for a in attendees:
-                                        email = a.get('email')
-                                        name = a.get('name')
-                                        tg_id = get_tg_id_by_email(email)
-                                        if a['role'] != "ORGANIZER" and tg_id is not None and teg_id == tg_id:
-                                            res += f"[{name}](tg://user?id={tg_id}) — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
-                                            name_for_send = name
-                                            break
-
-                                    for a in attendees:
-                                        email = a.get('email')
-                                        name = a.get('name')
-                                        tg_id = get_tg_id_by_email(email)
-                                        if a['role'] != "ORGANIZER" and tg_id is not None and teg_id != tg_id:
-                                            res += f"[{name}](tg://user?id={tg_id}) — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
-
-                                        elif a['role'] != "ORGANIZER" and tg_id is None:
-                                            res += f"{name} — {PARSTAT_RU.get(a['status'], 'Неизвестно')}\n"
-
-                                    if res[-1] == '\n': res = res[:-1]
-                                    res += '///'
-
-                                    if teg_id and teg_id not in list_not_send_tg_id:
-                                        markup = InlineKeyboardMarkup()
-                                        if short_url is not None:
-                                            accept = "success" if user['status'] == "ACCEPTED" else None
-                                            decline = "danger" if user['status'] == "DECLINED" else None
-                                            maybe = "success" if user['status'] == "TENTATIVE" else None
-
-                                            btn_accept = InlineKeyboardButton("Принять", style=accept,
-                                                                              callback_data=f"c_ACCEPTED_{short_url}_{user['status']}_2")
-                                            btn_decline = InlineKeyboardButton("Отклонить", style=decline,
-                                                                               callback_data=f"c_DECLINED_{short_url}_{user['status']}_2")
-                                            btn_maybe = InlineKeyboardButton("Под вопросом", style=maybe,
-                                                                             callback_data=f"c_TENTATIVE_{short_url}_{user['status']}_2")
-                                            btn_update = InlineKeyboardButton("🔄",
-                                                                             callback_data=f"update_{short_url}_2")
-                                            if user['role'] != "ORGANIZER":
-                                                markup.row(btn_accept, btn_update, btn_decline)
-                                            else:
-                                                markup.row(btn_update)
-                                        send_message_limited(teg_id, res, reply_markup=markup)
-                                        save_event_sends(name_for_send, teg_id, now_cooldown_send, event_uid, event_url)
+                            markup = InlineKeyboardMarkup()
+                            accept = "success" if user['status'] == "ACCEPTED" else None
+                            decline = "danger" if user['status'] == "DECLINED" else None
+                            maybe = "success" if user['status'] == "TENTATIVE" else None
+                            btn_accept = InlineKeyboardButton(
+                                "Принять", style=accept,
+                                callback_data=f"c_ACCEPTED_{event_uid}_{user['status']}_2")
+                            btn_decline = InlineKeyboardButton(
+                                "Отклонить", style=decline,
+                                callback_data=f"c_DECLINED_{event_uid}_{user['status']}_2")
+                            btn_maybe = InlineKeyboardButton(
+                                "Под вопросом", style=maybe,
+                                callback_data=f"c_TENTATIVE_{event_uid}_{user['status']}_2")
+                            btn_update = InlineKeyboardButton(
+                                "🔄", callback_data=f"update_{event_uid}_2")
+                            if user['role'] != "ORGANIZER":
+                                markup.row(btn_accept, btn_update, btn_decline)
+                            else:
+                                markup.row(btn_update)
+                            send_message_limited(teg_id, res, reply_markup=markup)
+                            save_event_sends(
+                                name_for_send, teg_id, pending_key[1], event_uid, event_url
+                            )
+                            saved_event_keys.add(pending_key)
 
                 except Exception as e:
+                    scan_complete = False
                     logger.exception(f"CALDAV: ой {e}")
 
-        if not caldav_error_occurred:
-            deleted_events_uids = all_sended_events_uids - current_found_uids
-            for del_uid in deleted_events_uids:
+        if scan_complete:
+            for tg_id, cooldown, event_uid in saved_event_keys - observed_event_keys:
                 try:
-                    uid_for_delete = del_uid.split('_')[-1]
-                    set_all_attendees_needs_action(uid_for_delete)
-                    delete_event_sends(uid_for_delete)
+                    delete_event_sends(tg_id, cooldown, event_uid)
                 except Exception as e:
                     logger.error(f"CALDAV: Ошибка удаления события из БД: {e}")
 
