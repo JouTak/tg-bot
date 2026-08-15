@@ -14,6 +14,8 @@ class User(Base):
     nc_login = Column(String(100), nullable=False)
     nc_email = Column(String(255), nullable=True)
     nc_time_zone = Column(Integer, nullable=False, default=3)
+    nc_timezone = Column(String(64), nullable=True)
+    timezone_override = Column(String(64), nullable=True)
     nc_token = Column(String(100), nullable=True)
 
 class Task(Base):

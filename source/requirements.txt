@@ -7,3 +7,4 @@ python-dotenv>=1.0.0
 caldav<2.0.0
 icalendar>=5.0.0,<6.0.0
 urllib3==1.26.20
+tzdata==2026.3
