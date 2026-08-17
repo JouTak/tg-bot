@@ -43,7 +43,7 @@ def auto_migrate():
                     conn.execute(text("DELETE FROM alembic_version"))
                     conn.commit()
 
-            command.stamp(cfg, "head")
+            command.upgrade(cfg, "head")
 
         mc = MigrationContext.configure(connection)
         diff = compare_metadata(mc, Base.metadata)

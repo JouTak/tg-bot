@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 from collections import Counter
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from source.config import POLL_INTERVAL, EXCLUDED_CARD_IDS, ARCHIVE_AFTER_DAYS, TIMEZONES
+from source.config import POLL_INTERVAL, EXCLUDED_CARD_IDS, ARCHIVE_AFTER_DAYS
 from source.connections.sender import send_message_limited
 from source.connections.nextcloud_api import fetch_all_tasks, in_done_stack, archive_card, get_url_attachment
 from source.db.repos.users import get_user_map, get_timezone
@@ -23,18 +23,13 @@ from source.app_logging import logger, is_debug
 from source.logging_service import send_log
 from source.links import card_url
 
-def format_to_timezone(dt: datetime, tz: int) -> str:
-    """Преобразует datetime в указанный UTC-сдвиг и возвращает время ЧЧ:ММ."""
+def format_to_timezone(dt: datetime, tz) -> str:
+    """Преобразует datetime в timezone пользователя."""
     if not isinstance(dt, datetime):
         return str(dt)
 
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-
-    tz = TIMEZONES.get(tz)
-    if tz is None:
-        logger.error(f"CALDAV: Неизвестный UTC-сдвиг: {tz}")
-        tz = 3
 
     return dt.astimezone(tz).strftime("%y-%m-%d %H:%M")
 
@@ -431,13 +426,13 @@ def poll_new_tasks():
                         if isinstance(changes[i], list):
                             od = changes[i][0].dt if changes[i][0] else "—"
                             if isinstance(od, datetime):
-                                od = format_to_timezone(od, tz=3) if od else "—"
+                                od = format_to_timezone(od, tz=get_timezone(None)) if od else "—"
                             else:
                                 od = str(od)
 
                             nd = changes[i][1].dt if changes[i][1] else "—"
                             if isinstance(nd, datetime):
-                                nd = format_to_timezone(nd, tz=3) if nd else "—"
+                                nd = format_to_timezone(nd, tz=get_timezone(None)) if nd else "—"
                             else:
                                 nd = str(nd)
                             changes[i] = f"Due: `{od or '—'}` → `{nd or '—'}`"
