@@ -2,8 +2,13 @@ CREATE DATABASE IF NOT EXISTS itmocraft_tg_bot CHARACTER SET utf8mb4 COLLATE utf
 USE itmocraft_tg_bot;
 
 CREATE TABLE IF NOT EXISTS users (
-  tg_id     BIGINT        NOT NULL PRIMARY KEY,
-  nc_login  VARCHAR(100)  NOT NULL
+  tg_id              BIGINT        NOT NULL PRIMARY KEY,
+  nc_login           VARCHAR(100)  NOT NULL,
+  nc_email           VARCHAR(255)  NULL,
+  nc_time_zone       INT           NOT NULL DEFAULT 3,
+  nc_timezone        VARCHAR(64)   NULL,
+  timezone_override  VARCHAR(64)   NULL,
+  nc_token           VARCHAR(100)  NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS tasks (

@@ -2,7 +2,10 @@ import requests
 from requests.auth import HTTPBasicAuth
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from source.connections.bot_factory import bot
-from source.db.repos.users import delete_login_token, get_token, save_login_to_db_with_token, get_email_by_tg_id
+from source.db.repos.users import (
+    NEXTCLOUD_FIELD_MISSING, get_token, save_login_to_db_with_token,
+    get_email_by_tg_id,
+)
 from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, WEB_APP_URL
 from source.connections.sender import send_message_limited, edit_message_limited
 from source.nc_calendar import update_event_partstat, msg_design_from_button
@@ -72,9 +75,6 @@ def check_login(call):
                 'OCS-APIRequest': 'true',
                 'Accept': 'application/json'
             }
-            delete_login_token(call.from_user.id)
-
-
             user_url = WEB_APP_URL + "/ocs/v2.php/cloud/user"
 
             user_response = requests.get(
@@ -85,16 +85,19 @@ def check_login(call):
 
             user_response.raise_for_status()
 
-            data = user_response.json()
-            email = data.get("ocs", {}).get("data", {}).get("email")
-            nc_login = data.get("ocs", {}).get("data", {}).get("id")
-            save_login_to_db_with_token(call.from_user.id, nc_login, email, nc_token)
+            data = user_response.json().get("ocs", {}).get("data", {})
+            email = data["email"] if "email" in data else NEXTCLOUD_FIELD_MISSING
+            timezone_value = data["timezone"] if "timezone" in data else NEXTCLOUD_FIELD_MISSING
+            nc_login = data.get("id", nc_login)
+            save_login_to_db_with_token(
+                call.from_user.id, nc_login, email, nc_token, timezone_value
+            )
             bot.edit_message_text(f"✅ Успешно! Аккаунт {nc_login} привязан.",
                                   call.message.chat.id,
                                   call.message.message_id)
 
         else:
-            send_message_limited(call.message.chat.id, "Произошла ошибка или срок действия ссылки истек.")
+            bot.answer_callback_query(call.id, "Произошла ошибка или срок действия ссылки истек.", show_alert=True)
 
     except Exception as e:
         bot.answer_callback_query(call.id, "Произошла ошибка или срок действия ссылки истек.", show_alert=True)
@@ -102,7 +105,6 @@ def check_login(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('c_'))
 def handle_cal(call):
-    bot.answer_callback_query(call.id)
     parts = call.data.split('_', 4)
     if len(parts) < 5:
         return
@@ -123,7 +125,7 @@ def handle_cal(call):
     user_email = get_email_by_tg_id(call.from_user.id)
 
     if not user_email:
-        send_message_limited(call.message.chat.id, "Не удалось найти ваш email в системе.")
+        bot.answer_callback_query(call.id, "Не удалось найти ваш email в системе.")
         return
 
     success = update_event_partstat(short_id, user_email, action)
@@ -156,14 +158,14 @@ def handle_cal(call):
             text=res,
             reply_markup=markup
         )
-        send_message_limited(call.message.chat.id, f"Ваш статус изменен на: {status_ru.get(action)}")
+        bot.answer_callback_query(call.id, f"Ваш статус изменен на: {status_ru.get(action)}")
     else:
-        send_message_limited(call.message.chat.id, "Произошла ошибка при обновлении статуса в календаре.")
+        bot.answer_callback_query(call.id, "Произошла ошибка при обновлении статуса в календаре.", show_alert=True)
 
+    bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('update_'))
 def handle_cal(call):
-    bot.answer_callback_query(call.id)
     parts = call.data.split('_', 2)
     if len(parts) < 3:
         return
@@ -202,3 +204,6 @@ def handle_cal(call):
             text=res,
             reply_markup=markup
         )
+        bot.answer_callback_query(call.id, "Обновлено")
+
+    bot.answer_callback_query(call.id)

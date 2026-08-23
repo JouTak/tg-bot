@@ -3,7 +3,11 @@ from telebot.types import (InlineKeyboardMarkup, InlineKeyboardButton, WebAppInf
 from source.app_logging import logger
 from source.connections.bot_factory import bot
 from source.connections.sender import send_message_limited
-from source.db.repos.users import get_login_by_tg_id, save_login_to_db, save_login_token, delete_login_token, get_token, get_nc_token, get_email_by_tg_id, save_timezone
+from source.db.repos.users import (
+    get_login_by_tg_id, save_login_to_db, save_login_token,
+    delete_login_token, get_token, get_nc_token, get_email_by_tg_id,
+    save_timezone, clear_timezone_override,
+)
 from source.db.repos.tasks import save_task_to_db, get_tasks_from_users, save_task_comment, get_task_stat, upsert_task_stats
 from source.db.repos.boards import save_board_topic
 from source.connections.nextcloud_api import fetch_user_tasks, get_board_title
@@ -284,14 +288,23 @@ def timezone_handler(message):
 
     command_data = message.text.split()
     if len(command_data) < 2:
-        send_message_limited(chat_id, "Формат: \"/timezone [+/-]N\"\nПример: /timezone +4\nВремя ставить в формате UTC")
+        send_message_limited(
+            chat_id,
+            "Формат: /timezone <IANA timezone|auto>\n"
+            "Примеры: /timezone Europe/Moscow, /timezone Europe/Warsaw, /timezone auto"
+        )
         return
     try:
-        save_timezone(user_id, int(command_data[1]))
-    except Exception as e:
-        logger.error("TIMEZONE: ой")
-
-
-    send_message_limited(chat_id, f"Твоя зона изменена, поздравляю с переездом!")
+        timezone_name = command_data[1]
+        if timezone_name.casefold() == "auto":
+            clear_timezone_override(user_id)
+            send_message_limited(chat_id, "Автоматическая timezone из Nextcloud снова включена.")
+        else:
+            save_timezone(user_id, timezone_name)
+            send_message_limited(chat_id, f"Timezone изменена на {timezone_name}.")
+    except ValueError:
+        send_message_limited(chat_id, "Неизвестная IANA timezone. Пример: Europe/Moscow")
+    except LookupError:
+        send_message_limited(chat_id, "Сначала зарегистрируйтесь командой /register.")
 
 

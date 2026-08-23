@@ -133,6 +133,10 @@ def _notify_startup():
 
 
 def run():
+    logger.info("Инициализация и миграция базы данных.")
+    init_db()
+    auto_migrate()
+
     if is_debug():
         try:
             info = bot.get_webhook_info()
@@ -155,11 +159,6 @@ def run():
     threading.Thread(target=sync_nextcloud_users, daemon=True).start()
     if is_debug():
         bot.set_update_listener(_updates_listener)
-
-    # migrations
-    logger.info(f"Миграция базы данных.")
-    init_db()
-    auto_migrate()
 
     backoff = 5.0
     while True:
