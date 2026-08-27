@@ -704,12 +704,19 @@ def poll_events():
 
                             keys = [(teg_id, cooldown, event_uid) for cooldown in cooldowns]
                             observed_event_keys.update(keys)
-                            pending_key = next(
-                                (key for key in keys
-                                 if key not in saved_event_keys
-                                 and until_start <= timedelta(minutes=key[1])),
-                                None,
-                            )
+
+                            pending_key = None
+                            poll_delta = timedelta(seconds=POLL_INTERVAL)
+                            for key in sorted(keys, key=lambda x: x[1], reverse=True):
+                                if key in saved_event_keys:
+                                    continue
+
+                                cooldown_delta = timedelta(minutes=key[1])
+
+                                if cooldown_delta - poll_delta <= until_start <= cooldown_delta:
+                                    pending_key = key
+                                    break
+
                             if pending_key is None:
                                 continue
 
