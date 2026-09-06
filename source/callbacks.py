@@ -92,7 +92,7 @@ def check_login(call):
             save_login_to_db_with_token(
                 call.from_user.id, nc_login, email, nc_token, timezone_value
             )
-            bot.edit_message_text(f"✅ Успешно! Аккаунт {nc_login} привязан.",
+            edit_message_limited(f"✅ Успешно! Аккаунт {nc_login} привязан.",
                                   call.message.chat.id,
                                   call.message.message_id)
 
