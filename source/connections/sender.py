@@ -1,9 +1,10 @@
 import time
-import html
-import re
 from collections import deque, defaultdict
+
 import requests
 from telebot.apihelper import ApiException
+from telebot.types import InputRichMessage
+
 from source.connections.bot_factory import bot
 from source.app_logging import logger
 
@@ -36,63 +37,33 @@ class TokenBucket:
 _global = TokenBucket(max_calls=30, period=1.0)  # ~30/s суммарно
 _per_chat = defaultdict(lambda: TokenBucket(max_calls=1, period=1.0))  # ~1/s в чат
 
-_bold_pat = re.compile(r'\*(.+?)\*')  # *bold* -> <b>…</b>
-_code_pat = re.compile(r'`(.+?)`')  # `code` -> <code>…</code>
-_strike_pat = re.compile(r'~(.+?)~')
-_italic_pat = re.compile(r'_(.+?)_')
-_a_tag_pat = re.compile(r'<a\s+href="https?://[^"]+">.*?</a>', re.IGNORECASE | re.DOTALL)
-_quote_pat = re.compile(r'\\\\\\(.+?)///', re.IGNORECASE | re.DOTALL)
-_pre_pat = re.compile(r'```(.+?)```', re.IGNORECASE | re.DOTALL)
-_mention_pat = re.compile(r'\[([^\]]+)\]\((tg://user\?id=\d+)\)', re.IGNORECASE)
 
-def _auto_html(text: str | None) -> str:
-    """
-       *жирный*  -> <b>жирный</b>
-       `код`     -> <code>код</code>
-       \\\цитата/// -> <blockquote>цитата</blockquote>
-       ```большой код``` -> <pre>большой код</pre>
-        ~зачеркнутый~ -> <s>зачеркнутый</s>
-        _курсив_ -> <i>курсив</i>
-       if need more markdown style edit text check api https://core.telegram.org/bots/api#markdown-style
-    """
-    if not text:
-        return ""
-    raw = str(text)
-    anchors = []
-    def _stash(m):
-        anchors.append(m.group(0))
-        return f"__ANCHOR_{len(anchors) - 1}__"
-    stashed = _a_tag_pat.sub(_stash, raw)
-
-    s = html.escape(stashed, quote=False)
-
-    s = _mention_pat.sub(lambda m: f'<a href="{m.group(2)}">{m.group(1)}</a>', s)
-
-    s = _quote_pat.sub(lambda m: f"<blockquote expandable>{m.group(1)}</blockquote>", s)
-    s = _pre_pat.sub(lambda m: f"<pre>{m.group(1)}</pre>", s)
-    s = _bold_pat.sub(lambda m: f"<b>{m.group(1)}</b>", s)
-    s = _code_pat.sub(lambda m: f"<code>{m.group(1)}</code>", s)
-    s = _strike_pat.sub(lambda m: f"<s>{m.group(1)}</s>", s)
-    for i, tag in enumerate(anchors):
-        s = s.replace(f"__ANCHOR_{i}__", tag)
-    s = _italic_pat.sub(lambda m: f"<i>{m.group(1)}</i>", s)
-    return s
+def _rich(text: str) -> InputRichMessage:
+    print(text)
+    return InputRichMessage(markdown=text.strip() or "")
 
 def send_message_limited(chat_id: int, text: str, **kwargs):
     _global.wait()
     _per_chat[chat_id].wait()
 
-    safe_text = _auto_html(text)
     kwargs.pop("parse_mode", None)
-    kwargs["parse_mode"] = "HTML"
+
     try:
-        return bot.send_message(chat_id, safe_text, **kwargs)
+        return bot.send_rich_message(
+            chat_id=chat_id,
+            rich_message=_rich(text),
+            **kwargs,
+        )
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-        logger.warning(f"Не смог отправить сообщение в chat_id={chat_id}: сеть недоступна "
-                       f"({'таймаут' if isinstance(e, requests.exceptions.Timeout) else 'нет соединения'}).")
+        logger.warning(
+            f"Не смог отправить сообщение в chat_id={chat_id}: сеть недоступна "
+            f"({'таймаут' if isinstance(e, requests.exceptions.Timeout) else 'нет соединения'})."
+        )
         return None
     except ApiException as e:
-        logger.warning(f"Ошибка Telegram API при отправке в chat_id={chat_id}: {e}")
+        logger.warning(
+            f"Ошибка Telegram API при отправке в chat_id={chat_id}: {e}"
+        )
         return None
 
 
@@ -100,23 +71,23 @@ def edit_message_limited(chat_id: int, message_id: int, text: str, **kwargs):
     _global.wait()
     _per_chat[chat_id].wait()
 
-    safe_text = _auto_html(text)
     kwargs.pop("parse_mode", None)
-    kwargs["parse_mode"] = "HTML"
+
     try:
-        return bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=safe_text, **kwargs)
+        return bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            rich_message=_rich(text),
+            **kwargs,
+        )
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-        logger.warning(f"Не смог отправить сообщение в chat_id={chat_id}: сеть недоступна "
-                       f"({'таймаут' if isinstance(e, requests.exceptions.Timeout) else 'нет соединения'}).")
+        logger.warning(
+            f"Не смог изменить сообщение в chat_id={chat_id}: сеть недоступна "
+            f"({'таймаут' if isinstance(e, requests.exceptions.Timeout) else 'нет соединения'})."
+        )
         return None
     except ApiException as e:
-        logger.warning(f"Ошибка Telegram API при отправке в chat_id={chat_id}: {e}")
+        logger.warning(
+            f"Ошибка Telegram API при изменении сообщения в chat_id={chat_id}: {e}"
+        )
         return None
-#
-# def send_bulk_text(chat_id: int, lines: list[str], header: str | None = None,
-#                    footer: str | None = None, **kwargs):
-#     parts = []
-#     if header: parts.append(header)
-#     parts.extend(lines)
-#     if footer: parts.append(footer)
-#     return send_message_limited(chat_id, "\n".join(parts), **kwargs)
