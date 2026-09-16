@@ -745,17 +745,27 @@ def poll_events():
                                 (a for a in attendees if a['role'] != "ORGANIZER"),
                                 key=lambda a: get_tg_id_by_email(a.get('email')) != teg_id,
                             )
+                            second_send = False
+
                             for participant in ordered_attendees:
                                 participant_id = get_tg_id_by_email(participant.get('email'))
                                 name = participant.get('name')
                                 status = PARSTAT_RU.get(participant['status'], 'Неизвестно')
+
+                                if participant_id == teg_id and participant['status'] == "ACCEPTED":
+                                    res = f"Напоминаю, что созвон **{summary}** в **{_format_event_time(start_dt)}**!"
+                                    second_send = True
+                                    break
+
                                 if participant_id is not None:
                                     res += f"<a href='tg://user?id={participant_id}'>{name}</a> — {status}<br>\n"
                                 else:
                                     res += f"{name} — {status}<br>\n"
                             if res[-1] == '\n':
                                 res = res[:-1]
-                            res += '</blockquote>'
+
+                            if not second_send:
+                                res += '</blockquote>'
 
                             markup = InlineKeyboardMarkup()
                             accept = "success" if user['status'] == "ACCEPTED" else None
