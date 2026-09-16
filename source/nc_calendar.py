@@ -668,6 +668,9 @@ def poll_events():
                         if not isinstance(start_property.dt, datetime):
                             continue
 
+                        if component.get("status") == "CANCELLED":
+                            continue
+
                         event_uid = str(component.get("uid") or start_property)
                         summary = str(component.get("summary", "Без названия"))
                         description = str(component.get("description", "Нет описания"))
