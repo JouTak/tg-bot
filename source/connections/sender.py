@@ -39,13 +39,11 @@ _per_chat = defaultdict(lambda: TokenBucket(max_calls=1, period=1.0))  # ~1/s в
 
 
 def _rich(text: str) -> InputRichMessage:
-    print(text)
     return InputRichMessage(markdown=text.strip() or "")
 
 def send_message_limited(chat_id: int, text: str, **kwargs):
     _global.wait()
     _per_chat[chat_id].wait()
-
     kwargs.pop("parse_mode", None)
 
     try:
