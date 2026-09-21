@@ -75,16 +75,16 @@ def change_description(old_description, new_description):
             continue
         if d.startswith("+ "):
             if is_checkbox(d[2:]) and count_checkbox[d[8:]] >= 2:
-                change_text += f"*& {d[4:].lstrip()}*<br>\n"
+                change_text += f"*& {d[4:].lstrip()}*\n"
             elif is_checkbox(d[2:]):
-                add_text += f"**+ {d[4:].lstrip()}**<br>\n"
+                add_text += f"**+ {d[4:].lstrip()}**\n"
             else:
-                add_text += f"**{d[2:].lstrip()}**<br>\n"
+                add_text += f"**{d[2:].lstrip()}**\n"
         elif d.startswith("- "):
             if is_checkbox(d[2:]) and count_checkbox[d[8:]] == 1:
-                remove_text += f"~~- {d[4:].lstrip()}~~<br>\n"
+                remove_text += f"~~- {d[4:].lstrip()}~~\n"
             elif not (is_checkbox(d[2:])):
-                remove_text += f"~~{d[2:].lstrip()}~~<br>\n"
+                remove_text += f"~~{d[2:].lstrip()}~~\n"
 
     if len(add_text) > 0:
         if add_text[-1] == '\n': add_text = add_text[:-1]
@@ -146,7 +146,7 @@ def poll_new_tasks():
                 changes = []
                 card_id = item.get('card_id')
                 board_id = item.get('board_id')
-                cid_link = f'<a href="{card_url(item.get("board_id"), card_id)}">{card_id}</a><br>'
+                cid_link = f'<a href="{card_url(item.get("board_id"), card_id)}">{card_id}</a>'
 
                 new_comments = int(item.get('comments_count', 0))
                 new_attachments = int(item.get('attachments_count', 0))
@@ -243,7 +243,7 @@ def poll_new_tasks():
                             for file_id in news_attachments:
                                 url = get_url_attachment(id_to_path_map.get(file_id))
                                 if url is not None:
-                                    url_attachment.append(f'<a href="{url}/preview">медиа {count_media}</a><br>')
+                                    url_attachment.append(f'<a href="{url}/preview">медиа {count_media}</a>')
                                     count_media += 1
                                 save_task_attachment(card_id, file_id)
 
@@ -264,7 +264,7 @@ def poll_new_tasks():
                             for comment_id in news_comments:
                                 data = id_to_info_map.get(comment_id)
                                 if data is not None:
-                                    comment_text += f"**{data.get('author')}:** {data.get('message')}<br>\n"
+                                    comment_text += f"**{data.get('author')}:** {data.get('message')}\n"
                                 save_task_comment(card_id, comment_id)
 
                             if comment_text[-1] == '\n': comment_text = comment_text[:-1]
@@ -385,7 +385,7 @@ def poll_new_tasks():
                     kb = InlineKeyboardMarkup()
                     kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                     send_log(
-                        f"🆕 *Новая задача*: {item['title']}<br>\n"
+                        f"🆕 **Новая задача**: {item['title']}<br>\n"
                         f"Labels: {''.join(f'[{_to_hashtag(lab)}]' for lab in item['labels']) or '—'}<br>\n"
                         f"Board: {item['board_title']}<br>\n"
                         f"Column: {item['stack_title']}<br>\n"
@@ -416,7 +416,7 @@ def poll_new_tasks():
                                 changes[i] = f"Due: `{od or '—'}` → `{nd or '—'}`"
                         send_message_limited(
                             tg_id,
-                            f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):<br>\n" + "<br>\n".join(changes),
+                            f"✏️ **Изменения в карточке** «{item['title']}» (ID {cid_link}):<br>\n" + "<br>\n".join(changes),
                             reply_markup=kb,
                         )
 
@@ -435,7 +435,7 @@ def poll_new_tasks():
                                 nd = str(nd)
                             changes[i] = f"Due: `{od or '—'}` → `{nd or '—'}`"
                     send_log(
-                        f"✏️ *Изменения в карточке* «{item['title']}»:<br>\n" + "<br>\n".join(changes),
+                        f"✏️ **Изменения в карточке** «{item['title']}»:<br>\n" + "<br>\n".join(changes),
                         board_id=item['board_id'],
                         reply_markup=kb,
                     )
