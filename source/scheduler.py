@@ -193,7 +193,7 @@ def poll_new_tasks():
                             item['prev_stack_id'], item['next_stack_id'], item['prev_stack_title'], item[
                                 'next_stack_title'] = None, None, None, None
                     if saved['stack_id'] != item['stack_id']:
-                        changes.append(f"Колонка: *{saved['stack_title']}* → *{item['stack_title']}*")
+                        changes.append(f"Колонка: **{saved['stack_title']}** → **{item['stack_title']}**")
                     UTC = timezone.utc
                     od = saved['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if saved[
                         'duedate'] else None
