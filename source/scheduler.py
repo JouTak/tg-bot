@@ -359,7 +359,7 @@ def poll_new_tasks():
                                 ))
 
                             need_zone = get_timezone(tg_id)
-                            duedat = item['duedate'].dt if item['duedate'] else "—"
+                            duedat = item['duedate'] if item['duedate'] else "—"
                             if isinstance(duedat, datetime):
                                 duedat_str = format_to_timezone(duedat, tz=need_zone) if duedat else "—"
                             else:
