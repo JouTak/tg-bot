@@ -75,26 +75,26 @@ def change_description(old_description, new_description):
             continue
         if d.startswith("+ "):
             if is_checkbox(d[2:]) and count_checkbox[d[8:]] >= 2:
-                change_text += f"_& {d[4:].lstrip()}_\n"
+                change_text += f"<i>& {d[4:].lstrip()}</i><br>\n"
             elif is_checkbox(d[2:]):
-                add_text += f"*+ {d[4:].lstrip()}*\n"
+                add_text += f"<b>+ {d[4:].lstrip()}</b><br>\n"
             else:
-                add_text += f"*{d[2:].lstrip()}*\n"
+                add_text += f"<b>{d[2:].lstrip()}</b><br>\n"
         elif d.startswith("- "):
             if is_checkbox(d[2:]) and count_checkbox[d[8:]] == 1:
-                remove_text += f"~- {d[4:].lstrip()}~\n"
+                remove_text += f"<s>- {d[4:].lstrip()}</s><br>\n"
             elif not (is_checkbox(d[2:])):
-                remove_text += f"~{d[2:].lstrip()}~\n"
+                remove_text += f"<s>{d[2:].lstrip()}</s><br>\n"
 
     if len(add_text) > 0:
         if add_text[-1] == '\n': add_text = add_text[:-1]
-        result_txt += f"\\\\\\{add_text}///\n"
+        result_txt += f"<blockquote expandable><br>{add_text}</blockquote>\n"
     if len(change_text) > 0:
         if change_text[-1] == '\n': change_text = change_text[:-1]
-        result_txt += f"\\\\\\{change_text}///\n"
+        result_txt += f"<blockquote expandable><br>{change_text}</blockquote>\n"
     if len(remove_text) > 0:
         if remove_text[-1] == '\n': remove_text = remove_text[:-1]
-        result_txt += f"\\\\\\{remove_text}///\n"
+        result_txt += f"<blockquote expandable><br>{remove_text}</blockquote>\n"
 
     return result_txt
 
@@ -193,7 +193,7 @@ def poll_new_tasks():
                             item['prev_stack_id'], item['next_stack_id'], item['prev_stack_title'], item[
                                 'next_stack_title'] = None, None, None, None
                     if saved['stack_id'] != item['stack_id']:
-                        changes.append(f"Колонка: *{saved['stack_title']}* → *{item['stack_title']}*")
+                        changes.append(f"Колонка: <b>{saved['stack_title']}</b> → <b>{item['stack_title']}</b>")
                     UTC = timezone.utc
                     od = saved['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if saved[
                         'duedate'] else None
@@ -259,29 +259,29 @@ def poll_new_tasks():
                             for comment_id in old_comments:
                                 delete_task_comment(card_id, comment_id)
 
-                            comment_text = '\\\\\\'
+                            comment_text = '<blockquote expandable><br>'
                             list(news_comments).sort()
                             for comment_id in news_comments:
                                 data = id_to_info_map.get(comment_id)
                                 if data is not None:
-                                    comment_text += f"*{data.get('author')}:* {data.get('message')}\n"
+                                    comment_text += f"<b>{data.get('author')}:</b> {data.get('message')}<br>\n"
                                 save_task_comment(card_id, comment_id)
 
                             if comment_text[-1] == '\n': comment_text = comment_text[:-1]
-                            comment_text += "///\n"
+                            comment_text += "</blockquote>\n"
 
                         kb = InlineKeyboardMarkup()
                         kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                         if inc_comments > 0:
                             send_log(
-                                "💬 Новые комментарии:" + "\n"
-                                                          f"{inc_comments} в «{item['title']}»\n{comment_text}",
+                                "💬 Новые комментарии:" + "<br>\n"
+                                                          f"{inc_comments} в «{item['title']}»<br>\n{comment_text}",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
                         elif inc_comments < 0:
                             send_log(
-                                "🗑 Удалены комментарии: " + "\n"
+                                "🗑 Удалены комментарии: " + "<br>\n"
                                                              f"{-inc_comments} в «{item['title']}»",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
@@ -289,14 +289,14 @@ def poll_new_tasks():
 
                         if inc_attachments > 0:
                             send_log(
-                                "📎 Новые вложения:" + "\n"
-                                                       f"{inc_attachments} в «{item['title']}»\n{url_text}",
+                                "📎 Новые вложения:" + "<br>\n"
+                                                       f"{inc_attachments} в «{item['title']}»<br>\n{url_text}",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
                         elif inc_attachments < 0:
                             send_log(
-                                "🗑 Удалены вложения: " + "\n"
+                                "🗑 Удалены вложения: " + "<br>\n"
                                                           f" {-inc_attachments} в «{item['title']}»",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
@@ -339,7 +339,6 @@ def poll_new_tasks():
                     save_task_assignee(card_id, login)
 
                 tg_ids = [login_map[login] for login in assigned_logins_api if login in login_map]
-
                 # === Уведомления новым назначенным ТОЛЬКО если не в исключениях ===
                 if _should_notify(card_id):
                     for login in new_assignees:
@@ -360,19 +359,18 @@ def poll_new_tasks():
                                 ))
 
                             need_zone = get_timezone(tg_id)
-                            duedat = item['duedate'].dt if item['duedate'] else "—"
+                            duedat = item['duedate'] if item['duedate'] else "—"
                             if isinstance(duedat, datetime):
                                 duedat_str = format_to_timezone(duedat, tz=need_zone) if duedat else "—"
                             else:
                                 duedat_str = str(duedat)
-
                             user_msg = (
-                                f"🆕 Новая задача: *{item['title']}*\n"
-                                f"Labels: {''.join(f'[{_to_hashtag(lab)}]' for lab in item['labels']) or '—'}\n"
-                                f"Board: {item['board_title']}\n"
-                                f"Column: {item['stack_title']}\n"
-                                f"Due: {duedat_str}\n"
-                                f"Description: \n\\\\\\{item['description'] or '—'}///"
+                                f"🆕 Новая задача: <b>{item['title']}</b><br>\n"
+                                f"Labels: {''.join(f'[{_to_hashtag(lab)}]' for lab in item['labels']) or '—'}<br>\n"
+                                f"Board: {item['board_title']}<br>\n"
+                                f"Column: {item['stack_title']}<br>\n"
+                                f"Due: {duedat_str}<br>\n"
+                                f"Description: <br>\n<blockquote expandable><br>{item['description'] or '—'}</blockquote>"
                             )
                             kb.add(
                                 InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
@@ -387,12 +385,12 @@ def poll_new_tasks():
                     kb = InlineKeyboardMarkup()
                     kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                     send_log(
-                        f"🆕 *Новая задача*: {item['title']}\n"
-                        f"Labels: {''.join(f'[{_to_hashtag(lab)}]' for lab in item['labels']) or '—'}\n"
-                        f"Board: {item['board_title']}\n"
-                        f"Column: {item['stack_title']}\n"
-                        f"Due: {item['duedate'] or '—'}\n"
-                        f"Description: \n\\\\\\{item['description'] or '—'}///",
+                        f"🆕 <b>Новая задача</b>: {item['title']}<br>\n"
+                        f"Labels: {''.join(f'[{_to_hashtag(lab)}]' for lab in item['labels']) or '—'}<br>\n"
+                        f"Board: {item['board_title']}<br>\n"
+                        f"Column: {item['stack_title']}<br>\n"
+                        f"Due: {item['duedate'] or '—'}<br>\n"
+                        f"Description: <br>\n<blockquote expandable><br>{item['description'] or '—'}</blockquote>",
                         board_id=item['board_id'],
                         reply_markup=kb,
                     )
@@ -418,7 +416,7 @@ def poll_new_tasks():
                                 changes[i] = f"Due: `{od or '—'}` → `{nd or '—'}`"
                         send_message_limited(
                             tg_id,
-                            f"✏️ *Изменения в карточке* «{item['title']}» (ID {cid_link}):\n" + "\n".join(changes),
+                            f"✏️ <b>Изменения в карточке</b> «{item['title']}» (ID {cid_link}):<br>\n" + "<br>\n".join(changes),
                             reply_markup=kb,
                         )
 
@@ -437,7 +435,7 @@ def poll_new_tasks():
                                 nd = str(nd)
                             changes[i] = f"Due: `{od or '—'}` → `{nd or '—'}`"
                     send_log(
-                        f"✏️ *Изменения в карточке* «{item['title']}»:\n" + "\n".join(changes),
+                        f"✏️ <b>Изменения в карточке</b> «{item['title']}»:<br>\n" + "<br>\n".join(changes),
                         board_id=item['board_id'],
                         reply_markup=kb,
                     )
