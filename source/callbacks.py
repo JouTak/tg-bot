@@ -92,9 +92,9 @@ def check_login(call):
             save_login_to_db_with_token(
                 call.from_user.id, nc_login, email, nc_token, timezone_value
             )
-            bot.edit_message_text(f"✅ Успешно! Аккаунт {nc_login} привязан.",
-                                  call.message.chat.id,
-                                  call.message.message_id)
+            edit_message_limited(call.message.chat.id,
+                                 call.message.message_id,
+                                 f"✅ Успешно! Аккаунт {nc_login} привязан.")
 
         else:
             bot.answer_callback_query(call.id, "Произошла ошибка или срок действия ссылки истек.", show_alert=True)
