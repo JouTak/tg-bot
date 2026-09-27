@@ -667,7 +667,6 @@ def poll_events():
                             continue
                         if not isinstance(start_property.dt, datetime):
                             continue
-
                         if component.get("status") == "CANCELLED":
                             continue
 
@@ -709,14 +708,13 @@ def poll_events():
                             observed_event_keys.update(keys)
 
                             pending_key = None
-                            poll_delta = timedelta(seconds=POLL_INTERVAL)
+
                             for key in sorted(keys, key=lambda x: x[1], reverse=True):
                                 if key in saved_event_keys:
                                     continue
 
                                 cooldown_delta = timedelta(minutes=key[1])
-
-                                if cooldown_delta - poll_delta <= until_start <= cooldown_delta:
+                                if until_start <= cooldown_delta:
                                     pending_key = key
                                     break
 
@@ -787,6 +785,7 @@ def poll_events():
                             else:
                                 markup.row(btn_update)
                             send_message_limited(teg_id, res, reply_markup=markup)
+                            logger.info(f"CALDAV: Отправлено пользователю с id {teg_id}")
                             save_event_sends(
                                 name_for_send, teg_id, pending_key[1], event_uid, event_url
                             )
