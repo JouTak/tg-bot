@@ -707,16 +707,12 @@ def poll_events():
                             keys = [(teg_id, cooldown, event_uid) for cooldown in cooldowns]
                             observed_event_keys.update(keys)
 
-                            pending_key = None
-
-                            for key in sorted(keys, key=lambda x: x[1], reverse=True):
-                                if key in saved_event_keys:
-                                    continue
-
-                                cooldown_delta = timedelta(minutes=key[1])
-                                if until_start <= cooldown_delta:
-                                    pending_key = key
-                                    break
+                            pending_keys = [
+                                key for key in keys
+                                if key not in saved_event_keys
+                                and until_start <= timedelta(minutes=key[1])
+                            ]
+                            pending_key = min(pending_keys, key=lambda x: x[1], default=None)
 
                             if pending_key is None:
                                 continue
@@ -784,12 +780,14 @@ def poll_events():
                                 markup.row(btn_accept, btn_update, btn_decline)
                             else:
                                 markup.row(btn_update)
-                            send_message_limited(teg_id, res, reply_markup=markup)
+                            if send_message_limited(teg_id, res, reply_markup=markup) is None:
+                                continue
+                            for key in pending_keys:
+                                save_event_sends(
+                                    name_for_send, teg_id, key[1], event_uid, event_url
+                                )
+                                saved_event_keys.add(key)
                             logger.info(f"CALDAV: Отправлено пользователю с id {teg_id}")
-                            save_event_sends(
-                                name_for_send, teg_id, pending_key[1], event_uid, event_url
-                            )
-                            saved_event_keys.add(pending_key)
 
                 except Exception as e:
                     scan_complete = False
