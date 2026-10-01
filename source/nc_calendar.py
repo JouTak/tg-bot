@@ -3,6 +3,7 @@ from source.config import WEB_CALDAV_URL, USERNAME, PASSWORD, COOLDOWN_TUESDAY, 
 from source.connections.sender import send_message_limited
 from source.db.repos.users import (
     NEXTCLOUD_FIELD_MISSING, get_tg_id_by_email, get_timezone,
+    get_user_credentials_from_db,
     update_nextcloud_profile,
 )
 from source.app_logging import logger
@@ -60,6 +61,70 @@ def _local_window(target_timezone, days):
     today = datetime.now(timezone.utc).astimezone(target_timezone).date()
     start = datetime.combine(today, time.min, target_timezone)
     return start, start + timedelta(days=days)
+
+
+def _ical_value_key(prop):
+    if prop is None:
+        return None
+    value = _localize_ical_property(prop, timezone.utc)
+    if isinstance(value, datetime):
+        return 'datetime', value.astimezone(timezone.utc)
+    if isinstance(value, date):
+        return 'date', value
+    return 'value', str(value)
+
+
+def _find_event_component(ical, event_uid, recurrence_id=None):
+    recurrence_key = _ical_value_key(recurrence_id)
+    for component in ical.walk('VEVENT'):
+        if str(component.get('UID')) != event_uid:
+            continue
+        component_recurrence = component.get('RECURRENCE-ID')
+        if recurrence_id is None and component_recurrence is None:
+            return component
+        if recurrence_key == _ical_value_key(component_recurrence):
+            return component
+    return None
+
+
+def _remove_duplicate_occurrences(
+        ical, event_uid, recurrence_id, keep_component):
+    if recurrence_id is None:
+        return 0
+
+    recurrence_key = _ical_value_key(recurrence_id)
+    original_count = len(ical.subcomponents)
+    ical.subcomponents = [
+        component for component in ical.subcomponents
+        if component is keep_component
+        or getattr(component, 'name', None) != 'VEVENT'
+        or str(component.get('UID')) != event_uid
+        or _ical_value_key(component.get('RECURRENCE-ID')) != recurrence_key
+    ]
+    return original_count - len(ical.subcomponents)
+
+
+def _normalize_recurrence_id(component, master_component):
+    recurrence_id = component.get('RECURRENCE-ID')
+    master_start = master_component.get('DTSTART') if master_component else None
+    if recurrence_id is None or master_start is None:
+        return
+
+    recurrence_value = recurrence_id.dt
+    master_value = master_start.dt
+    parameters = {}
+    if isinstance(recurrence_value, datetime) and isinstance(master_value, datetime):
+        recurrence_instant = _localize_ical_property(recurrence_id, timezone.utc)
+        if master_value.tzinfo is not None:
+            recurrence_value = recurrence_instant.astimezone(master_value.tzinfo)
+        else:
+            recurrence_value = recurrence_instant.astimezone(TEAM_TZ).replace(tzinfo=None)
+        if master_start.params.get('TZID'):
+            parameters['TZID'] = str(master_start.params['TZID'])
+
+    component.pop('RECURRENCE-ID')
+    component.add('RECURRENCE-ID', recurrence_value, parameters=parameters)
+
 
 PARSTAT_RU = {
     "ACCEPTED": "Будет",
@@ -482,13 +547,23 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
             logger.error(f"Неверный статус: {new_status}")
             return False
 
+        credentials = get_user_credentials_from_db(user_email)
+        if not credentials or not all(credentials):
+            logger.error(f"Не найдены Nextcloud credentials для {user_email}")
+            return False
 
-        client = DAVClient(WEB_CALDAV_URL, username=CALDAV_USERNAME, password=CALDAV_PASSWORD)
+        nc_login, nc_token = credentials
+        client = DAVClient(WEB_CALDAV_URL, username=nc_login, password=nc_token)
         principal = client.principal()
 
         target_event = None
+        target_calendar = None
+        target_component = None
 
-        calendars = principal.calendars()
+        calendars = [
+            calendar for calendar in principal.calendars()
+            if '_shared_by_' not in str(calendar.url)
+        ]
         for calendar in calendars:
             try:
                 events = calendar.date_search(start=start, end=end, expand=True)
@@ -497,6 +572,8 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
                     for component in ical.walk('VEVENT'):
                         if str(component.get('UID')) == event_uid:
                             target_event = event
+                            target_calendar = calendar
+                            target_component = component
                             logger.info(f"Событие найдено в календаре '{calendar.name}'")
                             break
                     if target_event: break
@@ -509,28 +586,50 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
             logger.error(f"Не удалось найти событие {event_uid} у пользователя {user_email}")
             return False
 
-        ical = target_event.icalendar_instance
+        raw_event = target_calendar.event_by_uid(event_uid)
+        raw_ical = raw_event.icalendar_instance
+        recurrence_id = target_component.get('RECURRENCE-ID')
+        component = _find_event_component(raw_ical, event_uid, recurrence_id)
+
+        if component is None and recurrence_id is not None:
+            master_component = _find_event_component(raw_ical, event_uid)
+            component = target_component.copy()
+            _normalize_recurrence_id(component, master_component)
+            raw_ical.add_component(component)
+
+        if component is None:
+            logger.error(f"Не удалось найти исходный компонент события {event_uid}")
+            return False
+
+        removed_duplicates = _remove_duplicate_occurrences(
+            raw_ical, event_uid, recurrence_id, component
+        )
+        if removed_duplicates:
+            logger.info(
+                f"Удалено дублей occurrence для события {event_uid}: {removed_duplicates}"
+            )
+
+        attendees = component.get('ATTENDEE')
+        if not attendees:
+            logger.error(f"У события {event_uid} нет списка ATTENDEE.")
+            return False
+        if not isinstance(attendees, list):
+            attendees = [attendees]
+
         updated = False
-
-        for component in ical.walk('VEVENT'):
-            if str(component.get('UID')) != event_uid:
-                continue
-
-            attendees = component.get('ATTENDEE')
-            if not attendees: continue
-            if not isinstance(attendees, list): attendees = [attendees]
-
-            for attendee in attendees:
-                if user_email.lower() in str(attendee).lower():
-                    attendee.params['PARTSTAT'] = [vText(new_status)]
-                    attendee.params['RSVP'] = [vText('FALSE')]
-                    updated = True
-                    break
+        normalized_email = user_email.strip().lower()
+        for attendee in attendees:
+            attendee_email = str(attendee).strip().lower().removeprefix('mailto:')
+            if attendee_email == normalized_email:
+                attendee.params['PARTSTAT'] = [vText(new_status)]
+                attendee.params['RSVP'] = [vText('FALSE')]
+                updated = True
+                break
 
         if updated:
-            target_event.icalendar_instance = ical
+            raw_event.icalendar_instance = raw_ical
             try:
-                target_event.save()
+                raw_event.save()
                 logger.info(f"Статус '{new_status}' успешно обновлен для {user_email}")
                 return True
             except Exception as e:
