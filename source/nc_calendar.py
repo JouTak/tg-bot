@@ -61,6 +61,53 @@ def _local_window(target_timezone, days):
     start = datetime.combine(today, time.min, target_timezone)
     return start, start + timedelta(days=days)
 
+
+def _ical_value_key(prop):
+    if prop is None:
+        return None
+    value = _localize_ical_property(prop, timezone.utc)
+    if isinstance(value, datetime):
+        return 'datetime', value.astimezone(timezone.utc)
+    if isinstance(value, date):
+        return 'date', value
+    return 'value', str(value)
+
+
+def _find_event_component(ical, event_uid, recurrence_id=None):
+    recurrence_key = _ical_value_key(recurrence_id)
+    for component in ical.walk('VEVENT'):
+        if str(component.get('UID')) != event_uid:
+            continue
+        component_recurrence = component.get('RECURRENCE-ID')
+        if recurrence_id is None and component_recurrence is None:
+            return component
+        if recurrence_key == _ical_value_key(component_recurrence):
+            return component
+    return None
+
+
+def _normalize_recurrence_id(component, master_component):
+    recurrence_id = component.get('RECURRENCE-ID')
+    master_start = master_component.get('DTSTART') if master_component else None
+    if recurrence_id is None or master_start is None:
+        return
+
+    recurrence_value = recurrence_id.dt
+    master_value = master_start.dt
+    parameters = {}
+    if isinstance(recurrence_value, datetime) and isinstance(master_value, datetime):
+        recurrence_instant = _localize_ical_property(recurrence_id, timezone.utc)
+        if master_value.tzinfo is not None:
+            recurrence_value = recurrence_instant.astimezone(master_value.tzinfo)
+        else:
+            recurrence_value = recurrence_instant.astimezone(TEAM_TZ).replace(tzinfo=None)
+        if master_start.params.get('TZID'):
+            parameters['TZID'] = str(master_start.params['TZID'])
+
+    component.pop('RECURRENCE-ID')
+    component.add('RECURRENCE-ID', recurrence_value, parameters=parameters)
+
+
 PARSTAT_RU = {
     "ACCEPTED": "Будет",
     "DECLINED": "Не будет",
@@ -487,6 +534,8 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
         principal = client.principal()
 
         target_event = None
+        target_calendar = None
+        target_component = None
 
         calendars = principal.calendars()
         for calendar in calendars:
@@ -497,6 +546,8 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
                     for component in ical.walk('VEVENT'):
                         if str(component.get('UID')) == event_uid:
                             target_event = event
+                            target_calendar = calendar
+                            target_component = component
                             logger.info(f"Событие найдено в календаре '{calendar.name}'")
                             break
                     if target_event: break
@@ -509,28 +560,42 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
             logger.error(f"Не удалось найти событие {event_uid} у пользователя {user_email}")
             return False
 
-        ical = target_event.icalendar_instance
+        raw_event = target_calendar.event_by_uid(event_uid)
+        raw_ical = raw_event.icalendar_instance
+        recurrence_id = target_component.get('RECURRENCE-ID')
+        component = _find_event_component(raw_ical, event_uid, recurrence_id)
+
+        if component is None and recurrence_id is not None:
+            master_component = _find_event_component(raw_ical, event_uid)
+            component = target_component.copy()
+            _normalize_recurrence_id(component, master_component)
+            raw_ical.add_component(component)
+
+        if component is None:
+            logger.error(f"Не удалось найти исходный компонент события {event_uid}")
+            return False
+
+        attendees = component.get('ATTENDEE')
+        if not attendees:
+            logger.error(f"У события {event_uid} нет списка ATTENDEE.")
+            return False
+        if not isinstance(attendees, list):
+            attendees = [attendees]
+
         updated = False
-
-        for component in ical.walk('VEVENT'):
-            if str(component.get('UID')) != event_uid:
-                continue
-
-            attendees = component.get('ATTENDEE')
-            if not attendees: continue
-            if not isinstance(attendees, list): attendees = [attendees]
-
-            for attendee in attendees:
-                if user_email.lower() in str(attendee).lower():
-                    attendee.params['PARTSTAT'] = [vText(new_status)]
-                    attendee.params['RSVP'] = [vText('FALSE')]
-                    updated = True
-                    break
+        normalized_email = user_email.strip().lower()
+        for attendee in attendees:
+            attendee_email = str(attendee).strip().lower().removeprefix('mailto:')
+            if attendee_email == normalized_email:
+                attendee.params['PARTSTAT'] = [vText(new_status)]
+                attendee.params['RSVP'] = [vText('FALSE')]
+                updated = True
+                break
 
         if updated:
-            target_event.icalendar_instance = ical
+            raw_event.icalendar_instance = raw_ical
             try:
-                target_event.save()
+                raw_event.save()
                 logger.info(f"Статус '{new_status}' успешно обновлен для {user_email}")
                 return True
             except Exception as e:
