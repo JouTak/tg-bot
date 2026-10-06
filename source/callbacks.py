@@ -4,7 +4,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from source.connections.bot_factory import bot
 from source.db.repos.users import (
     NEXTCLOUD_FIELD_MISSING, get_token, save_login_to_db_with_token,
-    get_email_by_tg_id,
+    get_auth_login_by_tg_id, get_email_by_tg_id,
 )
 from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, WEB_APP_URL
 from source.connections.sender import send_message_limited, edit_message_limited
@@ -126,6 +126,15 @@ def handle_cal(call):
 
     if not user_email:
         bot.answer_callback_query(call.id, "Не удалось найти ваш email в системе.")
+        return
+
+    if not get_auth_login_by_tg_id(call.from_user.id):
+        bot.answer_callback_query(
+            call.id,
+            "Для ответов на события нужно обновить авторизацию в Cloud. "
+            "Выполните команду /register.",
+            show_alert=True,
+        )
         return
 
     success = update_event_partstat(short_id, user_email, action)
