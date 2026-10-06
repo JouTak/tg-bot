@@ -4,7 +4,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from source.connections.bot_factory import bot
 from source.db.repos.users import (
     NEXTCLOUD_FIELD_MISSING, get_token, save_login_to_db_with_token,
-    get_email_by_tg_id,
+    get_auth_login_by_tg_id, get_email_by_tg_id,
 )
 from source.config import BASE_URL, USERNAME, PASSWORD, HEADERS, WEB_APP_URL
 from source.connections.sender import send_message_limited, edit_message_limited
@@ -69,7 +69,7 @@ def check_login(call):
             bot.answer_callback_query(call.id, "Вы еще не подтвердили вход в браузере!", show_alert=True)
         elif response.status_code == 200:
             auth_data = response.json()
-            nc_login = auth_data['loginName']
+            nc_auth_login = auth_data['loginName']
             nc_token = auth_data['appPassword']
             headers_get_info = {
                 'OCS-APIRequest': 'true',
@@ -79,7 +79,7 @@ def check_login(call):
 
             user_response = requests.get(
                 user_url,
-                auth=(nc_login, nc_token),
+                auth=(nc_auth_login, nc_token),
                 headers=headers_get_info
             )
 
@@ -88,9 +88,9 @@ def check_login(call):
             data = user_response.json().get("ocs", {}).get("data", {})
             email = data["email"] if "email" in data else NEXTCLOUD_FIELD_MISSING
             timezone_value = data["timezone"] if "timezone" in data else NEXTCLOUD_FIELD_MISSING
-            nc_login = data.get("id", nc_login)
+            nc_login = data.get("id", nc_auth_login)
             save_login_to_db_with_token(
-                call.from_user.id, nc_login, email, nc_token, timezone_value
+                call.from_user.id, nc_login, nc_auth_login, email, nc_token, timezone_value
             )
             edit_message_limited(call.message.chat.id,
                                  call.message.message_id,
@@ -126,6 +126,15 @@ def handle_cal(call):
 
     if not user_email:
         bot.answer_callback_query(call.id, "Не удалось найти ваш email в системе.")
+        return
+
+    if not get_auth_login_by_tg_id(call.from_user.id):
+        bot.answer_callback_query(
+            call.id,
+            "Для ответов на события нужно обновить авторизацию в Cloud. "
+            "Выполните команду /register.",
+            show_alert=True,
+        )
         return
 
     success = update_event_partstat(short_id, user_email, action)

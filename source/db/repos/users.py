@@ -40,6 +40,13 @@ def get_login_by_tg_id(tg_id: int) -> Optional[str]:
         return user.nc_login if user else None
 
 
+def get_auth_login_by_tg_id(tg_id: int) -> Optional[str]:
+    """Возвращает сохранённый логин для аутентификации в Nextcloud."""
+    with get_session() as session:
+        user = session.get(User, tg_id)
+        return user.nc_auth_login if user else None
+
+
 def get_email_by_tg_id(tg_id: int) -> Optional[str]:
     """Возвращает email пользователя по Telegram ID."""
     with get_session() as session:
@@ -59,14 +66,16 @@ def get_tg_id_by_email(email: str) -> Optional[int]:
 
 
 def get_user_credentials_from_db(email: str) -> Optional[Tuple[str, str]]:
-    """Возвращает (nc_login, nc_token) по email."""
+    """Возвращает (nc_auth_login, nc_token) по email."""
     normalized = _normalize_email(email)
     if normalized in (None, NEXTCLOUD_FIELD_MISSING):
         return None
     with get_session() as session:
         stmt = select(User).where(func.lower(func.trim(User.nc_email)) == normalized)
         user = session.execute(stmt).scalar_one_or_none()
-        return (user.nc_login, user.nc_token) if user else None
+        if not user:
+            return None
+        return (user.nc_auth_login or user.nc_login, user.nc_token)
 
 
 def save_login_to_db(tg_id: int, nc_login: str) -> None:
@@ -81,7 +90,7 @@ def save_login_to_db(tg_id: int, nc_login: str) -> None:
 
 
 def save_login_to_db_with_token(
-        tg_id: int, nc_login: str, email: object, nc_token: str,
+        tg_id: int, nc_login: str, nc_auth_login: str, email: object, nc_token: str,
         timezone_value: object = NEXTCLOUD_FIELD_MISSING) -> None:
     """Сохраняет или обновляет пользователя с токеном."""
     with get_session() as session:
@@ -90,6 +99,7 @@ def save_login_to_db_with_token(
             user = User(tg_id=tg_id, nc_login=nc_login)
             session.add(user)
         user.nc_login = nc_login
+        user.nc_auth_login = nc_auth_login
         normalized_email = _normalize_email(email)
         if normalized_email is not NEXTCLOUD_FIELD_MISSING:
             user.nc_email = normalized_email
@@ -187,12 +197,15 @@ def get_user_map() -> Dict[str, int]:
 
 def get_users() -> List[Dict[str, str]]:
     """
-    Возвращает список словарей { username: nc_login, password: nc_token }.
+    Возвращает список словарей { username: nc_auth_login, password: nc_token }.
     """
     with get_session() as session:
-        stmt = select(User.nc_login, User.nc_token)
+        stmt = select(User.nc_auth_login, User.nc_login, User.nc_token)
         result = session.execute(stmt).all()
-        return [{"username": row.nc_login, "password": row.nc_token} for row in result]
+        return [
+            {"username": row.nc_auth_login or row.nc_login, "password": row.nc_token}
+            for row in result
+        ]
 
 
 def save_login_token(tg_id: int, token: str) -> None:

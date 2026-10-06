@@ -4,7 +4,7 @@ from source.app_logging import logger
 from source.connections.bot_factory import bot
 from source.connections.sender import send_message_limited
 from source.db.repos.users import (
-    get_login_by_tg_id, save_login_to_db, save_login_token,
+    get_login_by_tg_id, get_auth_login_by_tg_id, save_login_to_db, save_login_token,
     delete_login_token, get_token, get_nc_token, get_email_by_tg_id,
     save_timezone, clear_timezone_override,
 )
@@ -39,7 +39,10 @@ def register_handler(message):
         send_message_limited(chat_id, "Эта команда может использоваться только в лс с ботом",
                              message_thread_id=message.message_thread_id)
         return
-    if get_login_by_tg_id(message.from_user.id) is None or get_email_by_tg_id(message.from_user.id) is None or get_nc_token(message.from_user.id) is None:
+    if (get_login_by_tg_id(message.from_user.id) is None
+            or get_auth_login_by_tg_id(message.from_user.id) is None
+            or get_email_by_tg_id(message.from_user.id) is None
+            or get_nc_token(message.from_user.id) is None):
         markup = InlineKeyboardMarkup()
         headers = {
             'User-Agent': '@ITMOcraftBOT',
@@ -247,7 +250,8 @@ def reply_comments(message):
         return
     keyboard_url = keyboard.keyboard[0][0].url
     card_id = int(keyboard_url.split("card/")[1])
-    username = get_login_by_tg_id(message.from_user.id)
+    username = (get_auth_login_by_tg_id(message.from_user.id)
+                or get_login_by_tg_id(message.from_user.id))
     token = get_nc_token(message.from_user.id)
     header = {'OCS-APIRequest': 'true', 'Content-Type': 'application/json', 'Accept': 'application/json'}
     comment = post(f"{OCS_BASE_URL}/deck/api/v1.0/cards/{card_id}/comments", headers=header, auth=(username, token), json={"message":message.text, "parentId": None})
