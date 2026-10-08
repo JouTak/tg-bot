@@ -552,8 +552,8 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
             logger.error(f"Не найдены Nextcloud credentials для {user_email}")
             return False
 
-        nc_login, nc_token = credentials
-        client = DAVClient(WEB_CALDAV_URL, username=nc_login, password=nc_token)
+        nc_auth_login, nc_token = credentials
+        client = DAVClient(WEB_CALDAV_URL, username=nc_auth_login, password=nc_token)
         principal = client.principal()
 
         target_event = None

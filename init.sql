@@ -4,6 +4,7 @@ USE itmocraft_tg_bot;
 CREATE TABLE IF NOT EXISTS users (
   tg_id              BIGINT        NOT NULL PRIMARY KEY,
   nc_login           VARCHAR(100)  NOT NULL,
+  nc_auth_login      VARCHAR(255)  NULL,
   nc_email           VARCHAR(255)  NULL,
   nc_time_zone       INT           NOT NULL DEFAULT 3,
   nc_timezone        VARCHAR(64)   NULL,
