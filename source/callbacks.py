@@ -95,6 +95,7 @@ def check_login(call):
             edit_message_limited(call.message.chat.id,
                                  call.message.message_id,
                                  f"✅ Успешно! Аккаунт {nc_login} привязан.")
+            bot.answer_callback_query(call.id, f"✅ Успешно! Аккаунт {nc_login} привязан.")
 
         else:
             bot.answer_callback_query(call.id, "Произошла ошибка или срок действия ссылки истек.", show_alert=True)
