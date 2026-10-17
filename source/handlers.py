@@ -59,8 +59,10 @@ def register_handler(message):
         save_login_token(message.from_user.id, poll_token)
         web_app = WebAppInfo(login_url)
         btn = InlineKeyboardButton("Подключить Cloud", web_app=web_app)
+        btn_url = InlineKeyboardButton("Подключить Cloud через браузер", url=login_url)
         btn_check = InlineKeyboardButton("Подтвердить вход ✅", callback_data=f"check")
         markup.add(btn)
+        markup.add(btn_url)
         markup.add(btn_check)
         send_message_limited(chat_id, "Авторизуйтесь через клауд:", reply_markup=markup)
     else:

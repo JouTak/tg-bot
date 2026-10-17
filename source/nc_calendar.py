@@ -201,7 +201,7 @@ def msg_design_from_button(uid: str, teg_id: int, type_msg: int):
                                     res += f"Организатор: {name}<br>\n"
                                     break
 
-                            res += "👥 Участники:<br>\n<blockquote expandable><br>\n"
+                            res += "👥 Участники:<br>\n<blockquote expandable>\n"
                             for a in attendees:
                                 email = a.get('email')
                                 name = a.get('name')
@@ -347,10 +347,13 @@ def sync_nextcloud_users():
                         updated_count += 1
 
             logger.info(f"CLOUD: Успешно синхронизировано {updated_count} пользователей с почтой.")
-            sleep(86400 * UPDATE_INTERVAL)
+
 
         except Exception as e:
             logger.exception(f"CLOUD: Критическая ошибка при синхронизации пользователей: {e}")
+
+        finally:
+            sleep(86400 * UPDATE_INTERVAL)
 
 def get_all_participants(component):
     """
@@ -457,7 +460,7 @@ def get_calendar(teg_id, cooldown=6, all_events=False):
                                     res += f"Организатор: {name}<br>\n"
                                     break
 
-                            res += "👥 Участники:<br>\n<blockquote expandable><br>\n"
+                            res += "👥 Участники:<br>\n<blockquote expandable>\n"
 
                             for a in attendees:
                                 email = a.get('email')
@@ -833,7 +836,7 @@ def poll_events():
                                         res += f"Организатор: {name}<br>\n"
                                     break
 
-                            res += "👥 Участники:<br>\n<blockquote expandable><br>\n"
+                            res += "👥 Участники:<br>\n<blockquote expandable>\n"
                             ordered_attendees = sorted(
                                 (a for a in attendees if a['role'] != "ORGANIZER"),
                                 key=lambda a: get_tg_id_by_email(a.get('email')) != teg_id,
