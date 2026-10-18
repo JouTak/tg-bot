@@ -88,13 +88,13 @@ def change_description(old_description, new_description):
 
     if len(add_text) > 0:
         if add_text[-1] == '\n': add_text = add_text[:-1]
-        result_txt += f"<blockquote expandable><br>{add_text}</blockquote>\n"
+        result_txt += f"<blockquote expandable>{add_text}</blockquote>\n"
     if len(change_text) > 0:
         if change_text[-1] == '\n': change_text = change_text[:-1]
-        result_txt += f"<blockquote expandable><br>{change_text}</blockquote>\n"
+        result_txt += f"<blockquote expandable>{change_text}</blockquote>\n"
     if len(remove_text) > 0:
         if remove_text[-1] == '\n': remove_text = remove_text[:-1]
-        result_txt += f"<blockquote expandable><br>{remove_text}</blockquote>\n"
+        result_txt += f"<blockquote expandable>{remove_text}</blockquote>\n"
 
     return result_txt
 
@@ -259,7 +259,7 @@ def poll_new_tasks():
                             for comment_id in old_comments:
                                 delete_task_comment(card_id, comment_id)
 
-                            comment_text = '<blockquote expandable><br>'
+                            comment_text = '<blockquote expandable>'
                             list(news_comments).sort()
                             for comment_id in news_comments:
                                 data = id_to_info_map.get(comment_id)
@@ -370,7 +370,7 @@ def poll_new_tasks():
                                 f"Board: {item['board_title']}<br>\n"
                                 f"Column: {item['stack_title']}<br>\n"
                                 f"Due: {duedat_str}<br>\n"
-                                f"Description: <br>\n<blockquote expandable><br>{item['description'] or '—'}</blockquote>"
+                                f"Description: <br>\n<blockquote expandable>{item['description'] or '—'}</blockquote>"
                             )
                             kb.add(
                                 InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
@@ -390,7 +390,7 @@ def poll_new_tasks():
                         f"Board: {item['board_title']}<br>\n"
                         f"Column: {item['stack_title']}<br>\n"
                         f"Due: {item['duedate'] or '—'}<br>\n"
-                        f"Description: <br>\n<blockquote expandable><br>{item['description'] or '—'}</blockquote>",
+                        f"Description: <br>\n<blockquote expandable>{item['description'] or '—'}</blockquote>",
                         board_id=item['board_id'],
                         reply_markup=kb,
                     )

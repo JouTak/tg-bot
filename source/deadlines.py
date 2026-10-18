@@ -269,7 +269,7 @@ def poll_deadlines():
                         continue
 
                     entries.sort(key=lambda x: (priority.get(x[0], 9), x[2]))
-                    body = "\n".join(e[1] for e in entries)
+                    body = "<br>\n".join(e[1] for e in entries)
 
                     ok = send_message_limited(tg_id, f"⏰ Напоминания о дедлайнах:\n{body}")
                     if ok:

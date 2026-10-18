@@ -131,6 +131,13 @@ def _notify_startup():
     except Exception as e:
         logger.warning(f"Не удалось отправить уведомление о старте: {e}")
 
+def worker(func, retry_delay=1):
+    while True:
+        try:
+            func()
+        except Exception as e:
+            logger.warning(f"Ошибка в потоке. Перезапускаем... Ошибка {e}")
+            time.sleep(retry_delay)
 
 def run():
     logger.info("Инициализация и миграция базы данных.")
@@ -152,11 +159,11 @@ def run():
 
     _notify_startup()
 
-    threading.Thread(target=poll_new_tasks, daemon=True).start()
-    threading.Thread(target=poll_deadlines, daemon=True).start()
+    threading.Thread(target=worker, args=(poll_new_tasks,), daemon=True).start()
+    threading.Thread(target=worker, args=(poll_deadlines,), daemon=True).start()
     if CALDAV_PASSWORD is not None and CALDAV_USERNAME is not None:
-        threading.Thread(target=poll_events, daemon=True).start()
-    threading.Thread(target=sync_nextcloud_users, daemon=True).start()
+        threading.Thread(target=worker, args=(poll_events,), daemon=True).start()
+    threading.Thread(target=worker, args=(sync_nextcloud_users,), daemon=True).start()
     if is_debug():
         bot.set_update_listener(_updates_listener)
 
