@@ -18,6 +18,7 @@ class User(Base):
     nc_timezone = Column(String(64), nullable=True)
     timezone_override = Column(String(64), nullable=True)
     nc_token = Column(String(100), nullable=True)
+    is_admin = Column(Boolean, default=False, nullable=False)
 
 class Task(Base):
     __tablename__ = "tasks"

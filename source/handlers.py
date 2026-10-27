@@ -6,7 +6,7 @@ from source.connections.sender import send_message_limited
 from source.db.repos.users import (
     get_login_by_tg_id, get_auth_login_by_tg_id, save_login_to_db, save_login_token,
     delete_login_token, get_token, get_nc_token, get_email_by_tg_id,
-    save_timezone, clear_timezone_override,
+    save_timezone, clear_timezone_override, check_admin_by_tg_id
 )
 from source.db.repos.tasks import save_task_to_db, get_tasks_from_users, save_task_comment, get_task_stat, upsert_task_stats
 from source.db.repos.boards import save_board_topic
@@ -199,6 +199,10 @@ def whereami(m):
     Показывает chat_id и message_thread_id.
     Используется для настройки.
     """
+    is_admin = check_admin_by_tg_id(m.from_user.id)
+    if not is_admin:
+        return
+
     send_message_limited(
         m.chat.id,
         f"Ты находишься в чате с chat_id = {m.chat.id}\n"
@@ -213,6 +217,10 @@ def set_board_topic_handler(message):
     Привязывает Telegram-топик к доске Nextcloud.
     Нужно для отправки логов в правильную тему.
     """
+    is_admin = check_admin_by_tg_id(message.from_user.id)
+    if not is_admin:
+        return
+
     chat_id = message.chat.id
     if message.chat.type != 'supergroup':
         send_message_limited(chat_id, "Эта команда работает только в группах с топиками.")
@@ -312,5 +320,12 @@ def timezone_handler(message):
         send_message_limited(chat_id, "Неизвестная IANA timezone. Пример: Europe/Moscow")
     except LookupError:
         send_message_limited(chat_id, "Сначала зарегистрируйтесь командой /register.")
+
+@bot.message_handler(commands=['init'], func=lambda msg: msg.chat.type != "private" and msg.text.startswith('/'))
+def init_group(message):
+    is_admin = check_admin_by_tg_id(message.from_user.id)
+    if not is_admin:
+        return
+
 
 

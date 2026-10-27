@@ -53,6 +53,12 @@ def get_email_by_tg_id(tg_id: int) -> Optional[str]:
         user = session.get(User, tg_id)
         return user.nc_email if user else None
 
+def check_admin_by_tg_id(tg_id: int) -> Optional[bool]:
+    """Возвращает email пользователя по Telegram ID."""
+    with get_session() as session:
+        user = session.get(User, tg_id)
+        return user.is_admin if user else False
+
 
 def get_tg_id_by_email(email: str) -> Optional[int]:
     """Возвращает Telegram ID по email."""

@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS users (
   nc_time_zone       INT           NOT NULL DEFAULT 3,
   nc_timezone        VARCHAR(64)   NULL,
   timezone_override  VARCHAR(64)   NULL,
-  nc_token           VARCHAR(100)  NULL
+  nc_token           VARCHAR(100)  NULL,
+  is_admin           BOOLEAN       DEFAULT FALSE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS tasks (
