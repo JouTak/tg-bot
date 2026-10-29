@@ -535,18 +535,29 @@ def get_calendar(teg_id, cooldown=6, all_events=False):
     return final_result
 
 
+def _attendee_status(component, user_email: str):
+    if component is None:
+        return None
+    attendees = component.get('ATTENDEE')
+    if attendees is None:
+        return None
+    if not isinstance(attendees, list):
+        attendees = [attendees]
+    for attendee in attendees:
+        email = str(attendee).strip().lower().removeprefix('mailto:')
+        if email == user_email:
+            return str(attendee.params.get('PARTSTAT', 'NEEDS-ACTION')).upper()
+    return None
+
+
 def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> bool:
-    """
-        event_uid: UID события
-        user_email: Email участника
-        new_status: 'ACCEPTED', 'DECLINED', 'TENTATIVE'
-    """
+    """Изменяет RSVP в attendee-копии без изменения SEQUENCE события."""
     try:
         start = datetime.now(TEAM_TZ)
         end = start + timedelta(days=6)
 
         new_status = new_status.upper()
-        if new_status not in ['ACCEPTED', 'DECLINED', 'TENTATIVE']:
+        if new_status not in ('ACCEPTED', 'DECLINED', 'TENTATIVE'):
             logger.error(f"Неверный статус: {new_status}")
             return False
 
@@ -558,6 +569,7 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
         nc_auth_login, nc_token = credentials
         client = DAVClient(WEB_CALDAV_URL, username=nc_auth_login, password=nc_token)
         principal = client.principal()
+        normalized_email = user_email.strip().lower()
 
         target_event = None
         target_calendar = None
@@ -571,39 +583,60 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
             try:
                 events = calendar.date_search(start=start, end=end, expand=True)
                 for event in events:
-                    ical = event.icalendar_instance
-                    for component in ical.walk('VEVENT'):
+                    for component in event.icalendar_instance.walk('VEVENT'):
                         if str(component.get('UID')) == event_uid:
                             target_event = event
                             target_calendar = calendar
                             target_component = component
                             logger.info(f"Событие найдено в календаре '{calendar.name}'")
                             break
-                    if target_event: break
+                    if target_event:
+                        break
             except Exception as e:
                 logger.debug(f"Пропуск календаря {calendar.name}: {e}")
                 continue
-            if target_event: break
+            if target_event:
+                break
 
         if not target_event:
             logger.error(f"Не удалось найти событие {event_uid} у пользователя {user_email}")
             return False
 
         raw_event = target_calendar.event_by_uid(event_uid)
-        raw_ical = raw_event.icalendar_instance
+        # GET нужен для атомарной пары: актуальный iCalendar + ETag.
+        current = client.request(raw_event.url, 'GET')
+        if current.status != 200:
+            logger.error(f"Не удалось прочитать событие {event_uid}: HTTP {current.status}")
+            return False
+        etag = current.headers.get('ETag')
+        if not etag:
+            logger.error(f"Событие {event_uid} не содержит ETag")
+            return False
+
+        raw_ical = Calendar.from_ical(current.raw)
         recurrence_id = target_component.get('RECURRENCE-ID')
         component = _find_event_component(raw_ical, event_uid, recurrence_id)
-
         if component is None and recurrence_id is not None:
             master_component = _find_event_component(raw_ical, event_uid)
+            if master_component is None:
+                logger.error(f"Не найден мастер повторяющегося события {event_uid}")
+                return False
             component = target_component.copy()
             _normalize_recurrence_id(component, master_component)
-            raw_ical.add_component(component)
 
         if component is None:
             logger.error(f"Не удалось найти исходный компонент события {event_uid}")
             return False
 
+        status = _attendee_status(component, normalized_email)
+        if status is None:
+            logger.error(f"Участник {user_email} не найден в событии {event_uid}")
+            return False
+        if status == new_status:
+            return True
+
+        if component not in raw_ical.subcomponents:
+            raw_ical.add_component(component)
         removed_duplicates = _remove_duplicate_occurrences(
             raw_ical, event_uid, recurrence_id, component
         )
@@ -613,37 +646,51 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
             )
 
         attendees = component.get('ATTENDEE')
-        if not attendees:
-            logger.error(f"У события {event_uid} нет списка ATTENDEE.")
-            return False
         if not isinstance(attendees, list):
             attendees = [attendees]
-
-        updated = False
-        normalized_email = user_email.strip().lower()
         for attendee in attendees:
-            attendee_email = str(attendee).strip().lower().removeprefix('mailto:')
-            if attendee_email == normalized_email:
+            email = str(attendee).strip().lower().removeprefix('mailto:')
+            if email == normalized_email:
                 attendee.params['PARTSTAT'] = [vText(new_status)]
                 attendee.params['RSVP'] = [vText('FALSE')]
-                updated = True
                 break
 
-        if updated:
-            raw_event.icalendar_instance = raw_ical
-            try:
-                raw_event.save()
+        # caldav 1.x save() увеличивает SEQUENCE и повторяет PUT при 504.
+        # Для RSVP недопустимы оба действия: они провоцируют повторные приглашения.
+        headers = {
+            'Content-Type': 'text/calendar; charset="utf-8"',
+            'If-Match': etag,
+        }
+        try:
+            response = client.put(raw_event.url, raw_ical.to_ical(), headers)
+            if response.status in (201, 204):
                 logger.info(f"Статус '{new_status}' успешно обновлен для {user_email}")
                 return True
-            except Exception as e:
-                logger.error(f"Ошибка сохранения: {e}")
+            logger.warning(f"CALDAV: PUT RSVP {event_uid}: HTTP {response.status}")
+            if response.status not in (412, 500, 502, 503, 504):
                 return False
-        else:
-            logger.error(f"Участник {user_email} не найден в списке ATTENDEE.")
-            return False
+        except Exception as e:
+            logger.warning(f"CALDAV: не удалось подтвердить PUT RSVP {event_uid}: {e}")
+
+        # После таймаута сервер мог уже сохранить ответ. Не повторяем PUT.
+        try:
+            latest = client.request(raw_event.url, 'GET')
+            if latest.status == 200:
+                latest_ical = Calendar.from_ical(latest.raw)
+                latest_component = _find_event_component(
+                    latest_ical, event_uid, recurrence_id
+                )
+                if _attendee_status(latest_component, normalized_email) == new_status:
+                    logger.info(f"CALDAV: RSVP {event_uid} подтвержден после ошибки PUT")
+                    return True
+        except Exception as e:
+            logger.warning(f"CALDAV: не удалось проверить RSVP {event_uid}: {e}")
+
+        logger.error(f"CALDAV: результат обновления RSVP {event_uid} не подтвержден")
+        return False
 
     except Exception as e:
-        logger.exception(f"Критический сбой функции: {e}")
+        logger.exception(f"Критический сбой функции update_event_partstat: {e}")
         return False
 
 
