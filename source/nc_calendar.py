@@ -7,12 +7,19 @@ from source.db.repos.users import (
     update_nextcloud_profile,
 )
 from source.app_logging import logger
+from source.caldav_rsvp import (
+    attendee_status as _attendee_status,
+    localize_ical_property as _localize_ical_property,
+    select_response_component,
+    set_attendee_partstat,
+)
 from source.db.repos.caldav_calendar import (
     get_events_from_db, save_event_sends, delete_event_sends, get_id_by_name,
 )
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from caldav import DAVClient, error
+from caldav.elements import dav
 from icalendar import Calendar, vText
 from datetime import datetime, timedelta, timezone, time, date
 
@@ -25,22 +32,6 @@ try:
     TEAM_TZ = ZoneInfo(TIMEZONE)
 except Exception:
     TEAM_TZ = timezone(timedelta(hours=3))
-
-
-def _localize_ical_property(prop, target_timezone):
-    """Разрешает aware, TZID, floating и all-day значения для получателя."""
-    if prop is None:
-        return None
-    value = prop.dt
-    if not isinstance(value, datetime):
-        return value
-    if value.tzinfo is not None:
-        return value.astimezone(target_timezone)
-    source_tzid = prop.params.get("TZID")
-    if source_tzid:
-        value = value.replace(tzinfo=ZoneInfo(str(source_tzid)))
-        return value.astimezone(target_timezone)
-    return value.replace(tzinfo=target_timezone)
 
 
 def _as_datetime(value, target_timezone):
@@ -61,69 +52,6 @@ def _local_window(target_timezone, days):
     today = datetime.now(timezone.utc).astimezone(target_timezone).date()
     start = datetime.combine(today, time.min, target_timezone)
     return start, start + timedelta(days=days)
-
-
-def _ical_value_key(prop):
-    if prop is None:
-        return None
-    value = _localize_ical_property(prop, timezone.utc)
-    if isinstance(value, datetime):
-        return 'datetime', value.astimezone(timezone.utc)
-    if isinstance(value, date):
-        return 'date', value
-    return 'value', str(value)
-
-
-def _find_event_component(ical, event_uid, recurrence_id=None):
-    recurrence_key = _ical_value_key(recurrence_id)
-    for component in ical.walk('VEVENT'):
-        if str(component.get('UID')) != event_uid:
-            continue
-        component_recurrence = component.get('RECURRENCE-ID')
-        if recurrence_id is None and component_recurrence is None:
-            return component
-        if recurrence_key == _ical_value_key(component_recurrence):
-            return component
-    return None
-
-
-def _remove_duplicate_occurrences(
-        ical, event_uid, recurrence_id, keep_component):
-    if recurrence_id is None:
-        return 0
-
-    recurrence_key = _ical_value_key(recurrence_id)
-    original_count = len(ical.subcomponents)
-    ical.subcomponents = [
-        component for component in ical.subcomponents
-        if component is keep_component
-        or getattr(component, 'name', None) != 'VEVENT'
-        or str(component.get('UID')) != event_uid
-        or _ical_value_key(component.get('RECURRENCE-ID')) != recurrence_key
-    ]
-    return original_count - len(ical.subcomponents)
-
-
-def _normalize_recurrence_id(component, master_component):
-    recurrence_id = component.get('RECURRENCE-ID')
-    master_start = master_component.get('DTSTART') if master_component else None
-    if recurrence_id is None or master_start is None:
-        return
-
-    recurrence_value = recurrence_id.dt
-    master_value = master_start.dt
-    parameters = {}
-    if isinstance(recurrence_value, datetime) and isinstance(master_value, datetime):
-        recurrence_instant = _localize_ical_property(recurrence_id, timezone.utc)
-        if master_value.tzinfo is not None:
-            recurrence_value = recurrence_instant.astimezone(master_value.tzinfo)
-        else:
-            recurrence_value = recurrence_instant.astimezone(TEAM_TZ).replace(tzinfo=None)
-        if master_start.params.get('TZID'):
-            parameters['TZID'] = str(master_start.params['TZID'])
-
-    component.pop('RECURRENCE-ID')
-    component.add('RECURRENCE-ID', recurrence_value, parameters=parameters)
 
 
 PARSTAT_RU = {
@@ -535,21 +463,6 @@ def get_calendar(teg_id, cooldown=6, all_events=False):
     return final_result
 
 
-def _attendee_status(component, user_email: str):
-    if component is None:
-        return None
-    attendees = component.get('ATTENDEE')
-    if attendees is None:
-        return None
-    if not isinstance(attendees, list):
-        attendees = [attendees]
-    for attendee in attendees:
-        email = str(attendee).strip().lower().removeprefix('mailto:')
-        if email == user_email:
-            return str(attendee.params.get('PARTSTAT', 'NEEDS-ACTION')).upper()
-    return None
-
-
 def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> bool:
     try:
         start = datetime.now(TEAM_TZ)
@@ -601,25 +514,35 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
             logger.error(f"Не удалось найти событие {event_uid} у пользователя {user_email}")
             return False
 
-        raw_event = target_calendar.event_by_uid(event_uid)
-        current = client.request(raw_event.url, 'GET')
-        if current.status != 200:
-            logger.error(f"Не удалось прочитать событие {event_uid}: HTTP {current.status}")
+        raw_events = target_calendar.search(
+            event=True, uid=event_uid, props=[dav.GetEtag()]
+        )
+        raw_event = next((
+            event for event in raw_events
+            if any(
+                str(candidate.get('UID')) == event_uid
+                for candidate in event.icalendar_instance.walk('VEVENT')
+            )
+        ), None)
+        if raw_event is None:
+            logger.error(f"Не удалось прочитать исходное событие {event_uid}")
             return False
-        raw_ical = Calendar.from_ical(current.raw)
-        recurrence_id = target_component.get('RECURRENCE-ID')
-        component = _find_event_component(raw_ical, event_uid, recurrence_id)
-        if component is None and recurrence_id is not None:
-            master_component = _find_event_component(raw_ical, event_uid)
-            if master_component is None:
-                logger.error(f"Не найден мастер повторяющегося события {event_uid}")
-                return False
-            component = target_component.copy()
-            _normalize_recurrence_id(component, master_component)
+        etag = raw_event.get_property(dav.GetEtag(), use_cached=True)
+        if not etag or str(etag).startswith('W/'):
+            logger.error(f"Событие {event_uid} не содержит strong ETag")
+            return False
 
+        raw_ical = raw_event.icalendar_instance
+        recurrence_id = target_component.get('RECURRENCE-ID')
+        component, response_scope = select_response_component(
+            raw_ical, event_uid, recurrence_id
+        )
         if component is None:
             logger.error(f"Не удалось найти исходный компонент события {event_uid}")
             return False
+        logger.info(
+            f"CALDAV: RSVP {event_uid} обновляется в scope={response_scope}"
+        )
 
         status = _attendee_status(component, normalized_email)
         if status is None:
@@ -628,27 +551,14 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
         if status == new_status:
             return True
 
-        if component not in raw_ical.subcomponents:
-            raw_ical.add_component(component)
-        removed_duplicates = _remove_duplicate_occurrences(
-            raw_ical, event_uid, recurrence_id, component
-        )
-        if removed_duplicates:
-            logger.info(
-                f"Удалено дублей occurrence для события {event_uid}: {removed_duplicates}"
-            )
+        if not set_attendee_partstat(component, normalized_email, new_status):
+            logger.error(f"Участник {user_email} не найден в событии {event_uid}")
+            return False
 
-        attendees = component.get('ATTENDEE')
-        if not isinstance(attendees, list):
-            attendees = [attendees]
-        for attendee in attendees:
-            email = str(attendee).strip().lower().removeprefix('mailto:')
-            if email == normalized_email:
-                attendee.params['PARTSTAT'] = [vText(new_status)]
-                attendee.params['RSVP'] = [vText('FALSE')]
-                break
-
-        headers = {'Content-Type': 'text/calendar; charset="utf-8"'}
+        headers = {
+            'Content-Type': 'text/calendar; charset="utf-8"',
+            'If-Match': str(etag),
+        }
         try:
             response = client.put(raw_event.url, raw_ical.to_ical(), headers)
             if response.status in (201, 204):
@@ -664,7 +574,7 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
             latest = client.request(raw_event.url, 'GET')
             if latest.status == 200:
                 latest_ical = Calendar.from_ical(latest.raw)
-                latest_component = _find_event_component(
+                latest_component, _ = select_response_component(
                     latest_ical, event_uid, recurrence_id
                 )
                 if _attendee_status(latest_component, normalized_email) == new_status:
