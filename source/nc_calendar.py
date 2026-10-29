@@ -309,7 +309,7 @@ def get_all_participants(component):
         for a in attendees:
             email = str(a).lower().replace("mailto:", "")
             name = str(a.params.get("CN", email))
-            status = str(a.params.get("PARTSTAT", "NEEDS-ACTION"))
+            status = _attendee_status(component, email)
             if not any(p['email'] == email for p in participants):
                 participants.append({
                     "email": email,

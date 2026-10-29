@@ -72,11 +72,21 @@ def attendee_status(component, user_email: str):
     if not isinstance(attendees, list):
         attendees = [attendees]
     normalized_email = user_email.strip().lower()
+    matching_statuses = []
     for attendee in attendees:
         email = str(attendee).strip().lower().removeprefix('mailto:')
         if email == normalized_email:
-            return str(attendee.params.get('PARTSTAT', 'NEEDS-ACTION')).upper()
-    return None
+            matching_statuses.append(
+                str(attendee.params.get('PARTSTAT', 'NEEDS-ACTION')).upper()
+            )
+    if not matching_statuses:
+        return None
+
+    answered = [
+        status for status in matching_statuses
+        if status != 'NEEDS-ACTION'
+    ]
+    return answered[-1] if answered else matching_statuses[-1]
 
 
 def set_attendee_partstat(component, user_email: str, new_status: str) -> bool:
@@ -86,9 +96,10 @@ def set_attendee_partstat(component, user_email: str, new_status: str) -> bool:
     if not isinstance(attendees, list):
         attendees = [attendees]
     normalized_email = user_email.strip().lower()
+    updated = False
     for attendee in attendees:
         email = str(attendee).strip().lower().removeprefix('mailto:')
         if email == normalized_email:
             attendee.params['PARTSTAT'] = vText(new_status)
-            return True
-    return False
+            updated = True
+    return updated

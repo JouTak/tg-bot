@@ -63,6 +63,21 @@ END:VCALENDAR\r
 """,
 )
 
+DUPLICATE_ATTENDEE_ICS = b"""BEGIN:VCALENDAR\r
+VERSION:2.0\r
+PRODID:-//JouTak test//EN\r
+BEGIN:VEVENT\r
+UID:sync-event\r
+RECURRENCE-ID;TZID=Europe/Moscow:20261029T220000\r
+DTSTART;TZID=Europe/Moscow:20261029T220000\r
+DTEND;TZID=Europe/Moscow:20261029T230000\r
+ORGANIZER:mailto:calendar@example.com\r
+ATTENDEE;CN=Person;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:Person@example.com\r
+ATTENDEE;CN=Person;PARTSTAT=ACCEPTED:mailto:person@example.com\r
+END:VEVENT\r
+END:VCALENDAR\r
+"""
+
 
 class CalDavRsvpSelectionTests(unittest.TestCase):
     def test_generated_occurrence_updates_master_without_adding_exception(self):
@@ -100,16 +115,47 @@ class CalDavRsvpSelectionTests(unittest.TestCase):
         self.assertEqual(scope, 'occurrence')
         self.assertIs(component, exceptions[0])
 
+    def test_duplicate_attendee_prefers_answer_and_updates_every_copy(self):
+        stored = Calendar.from_ical(DUPLICATE_ATTENDEE_ICS)
+        component = stored.walk('VEVENT')[0]
+
+        self.assertEqual(
+            attendee_status(component, 'person@example.com'), 'ACCEPTED'
+        )
+        participants = nc_calendar.get_all_participants(component)
+        matching_participants = [
+            participant for participant in participants
+            if participant['email'] == 'person@example.com'
+        ]
+        self.assertEqual(len(matching_participants), 1)
+        self.assertEqual(matching_participants[0]['status'], 'ACCEPTED')
+
+        self.assertTrue(set_attendee_partstat(
+            component, 'person@example.com', 'DECLINED'
+        ))
+        matching = [
+            attendee for attendee in component.get('ATTENDEE')
+            if str(attendee).lower().removeprefix('mailto:')
+            == 'person@example.com'
+        ]
+        self.assertEqual(len(matching), 2)
+        self.assertEqual(
+            [str(attendee.params['PARTSTAT']) for attendee in matching],
+            ['DECLINED', 'DECLINED'],
+        )
+
 
 class CalDavRsvpRequestTests(unittest.TestCase):
-    def _configure_client(self, dav_client_cls, get_credentials, etag):
+    def _configure_client(
+            self, dav_client_cls, get_credentials, etag,
+            expanded_ics=EXPANDED_ICS, raw_ics=MASTER_ICS):
         get_credentials.return_value = ('user', 'token')
 
         expanded_event = Mock()
-        expanded_event.icalendar_instance = Calendar.from_ical(EXPANDED_ICS)
+        expanded_event.icalendar_instance = Calendar.from_ical(expanded_ics)
 
         raw_event = Mock()
-        raw_event.icalendar_instance = Calendar.from_ical(MASTER_ICS)
+        raw_event.icalendar_instance = Calendar.from_ical(raw_ics)
         raw_event.get_property.return_value = etag
         raw_event.url = 'https://example.invalid/calendars/user/sync.ics'
 
@@ -172,6 +218,24 @@ class CalDavRsvpRequestTests(unittest.TestCase):
 
         client.put.assert_called_once()
         client.request.assert_called_once_with(raw_event.url, 'GET')
+
+    @patch.object(nc_calendar, 'get_user_credentials_from_db')
+    @patch.object(nc_calendar, 'DAVClient')
+    def test_existing_duplicate_answer_does_not_trigger_another_put(
+            self, dav_client_cls, get_credentials):
+        client, _, _ = self._configure_client(
+            dav_client_cls,
+            get_credentials,
+            '"etag-from-report"',
+            expanded_ics=DUPLICATE_ATTENDEE_ICS,
+            raw_ics=DUPLICATE_ATTENDEE_ICS,
+        )
+
+        self.assertTrue(nc_calendar.update_event_partstat(
+            'sync-event', 'person@example.com', 'ACCEPTED'
+        ))
+
+        client.put.assert_not_called()
 
 
 if __name__ == '__main__':
