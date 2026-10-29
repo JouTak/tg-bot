@@ -551,7 +551,6 @@ def _attendee_status(component, user_email: str):
 
 
 def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> bool:
-    """Изменяет RSVP в attendee-копии без изменения SEQUENCE события."""
     try:
         start = datetime.now(TEAM_TZ)
         end = start + timedelta(days=6)
@@ -603,7 +602,6 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
             return False
 
         raw_event = target_calendar.event_by_uid(event_uid)
-        # GET нужен для атомарной пары: актуальный iCalendar + ETag.
         current = client.request(raw_event.url, 'GET')
         if current.status != 200:
             logger.error(f"Не удалось прочитать событие {event_uid}: HTTP {current.status}")
@@ -655,8 +653,6 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
                 attendee.params['RSVP'] = [vText('FALSE')]
                 break
 
-        # caldav 1.x save() увеличивает SEQUENCE и повторяет PUT при 504.
-        # Для RSVP недопустимы оба действия: они провоцируют повторные приглашения.
         headers = {
             'Content-Type': 'text/calendar; charset="utf-8"',
             'If-Match': etag,
@@ -672,7 +668,6 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
         except Exception as e:
             logger.warning(f"CALDAV: не удалось подтвердить PUT RSVP {event_uid}: {e}")
 
-        # После таймаута сервер мог уже сохранить ответ. Не повторяем PUT.
         try:
             latest = client.request(raw_event.url, 'GET')
             if latest.status == 200:
