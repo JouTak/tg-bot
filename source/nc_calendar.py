@@ -606,11 +606,6 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
         if current.status != 200:
             logger.error(f"Не удалось прочитать событие {event_uid}: HTTP {current.status}")
             return False
-        etag = current.headers.get('ETag')
-        if not etag:
-            logger.error(f"Событие {event_uid} не содержит ETag")
-            return False
-
         raw_ical = Calendar.from_ical(current.raw)
         recurrence_id = target_component.get('RECURRENCE-ID')
         component = _find_event_component(raw_ical, event_uid, recurrence_id)
@@ -653,10 +648,7 @@ def update_event_partstat(event_uid: str, user_email: str, new_status: str) -> b
                 attendee.params['RSVP'] = [vText('FALSE')]
                 break
 
-        headers = {
-            'Content-Type': 'text/calendar; charset="utf-8"',
-            'If-Match': etag,
-        }
+        headers = {'Content-Type': 'text/calendar; charset="utf-8"'}
         try:
             response = client.put(raw_event.url, raw_ical.to_ical(), headers)
             if response.status in (201, 204):
