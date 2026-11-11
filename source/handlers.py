@@ -16,6 +16,9 @@ from source.config import COMMIT_HASH, WEB_APP_URL, OCS_BASE_URL, HEADERS
 from requests import post
 
 from source.nc_calendar import get_calendar
+from source.escaping import sanitize, user_block
+from source.scheduler import format_to_timezone
+from source.db.repos.users import get_timezone
 
 
 @bot.message_handler(commands=['start'])
@@ -107,11 +110,11 @@ def show_user_cards(message):
                 callback_data=f"move:{t['board_id']}:{t['stack_id']}:{t['card_id']}:{t.get('next_stack_id')}"
             ))
         msg = (
-            f"{t['title']}\n"
-            f"Board: {t['board_title']}\n"
-            f"Column: {t['stack_title']}\n"
-            f"Due: {t['duedate'] or '—'}\n"
-            f"{t['description'] or '—'}"
+            f"<b>{sanitize(t['title'])}</b><br>\n"
+            f"Board: {sanitize(t['board_title'])}<br>\n"
+            f"Column: {sanitize(t['stack_title'])}<br>\n"
+            f"Due: {format_to_timezone(t['duedate'], get_timezone(chat_id)) if t.get('duedate') else '—'}<br>\n"
+            f"{user_block(t['description']) or '—'}"
         )
         send_message_limited(chat_id, msg, reply_markup=kb)
 

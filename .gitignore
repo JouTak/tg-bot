@@ -10,3 +10,8 @@ source/db/__pycache__/
 source/db/repos/__pycache__/
 source/migrations/__pycache__/
 alembic
+.venv/
+__pycache__/
+*.pyc
+matrix_*.csv
+

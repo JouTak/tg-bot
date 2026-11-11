@@ -22,6 +22,7 @@ from source.db.repos.tasks import (
 from source.app_logging import logger, is_debug
 from source.logging_service import send_log
 from source.links import card_url
+from source.escaping import sanitize, user_block, user_block_q, code_text, escape_html
 
 def format_to_timezone(dt: datetime, tz) -> str:
     """Преобразует datetime в timezone пользователя."""
@@ -75,16 +76,16 @@ def change_description(old_description, new_description):
             continue
         if d.startswith("+ "):
             if is_checkbox(d[2:]) and count_checkbox[d[8:]] >= 2:
-                change_text += f"<i>& {d[4:].lstrip()}</i><br>\n"
+                change_text += f"<i>& {escape_html(d[4:].lstrip())}</i><br>\n"
             elif is_checkbox(d[2:]):
-                add_text += f"<b>+ {d[4:].lstrip()}</b><br>\n"
+                add_text += f"<b>+ {escape_html(d[4:].lstrip())}</b><br>\n"
             else:
-                add_text += f"<b>{d[2:].lstrip()}</b><br>\n"
+                add_text += f"<b>{escape_html(d[2:].lstrip())}</b><br>\n"
         elif d.startswith("- "):
             if is_checkbox(d[2:]) and count_checkbox[d[8:]] == 1:
-                remove_text += f"<s>- {d[4:].lstrip()}</s><br>\n"
+                remove_text += f"<s>- {escape_html(d[4:].lstrip())}</s><br>\n"
             elif not (is_checkbox(d[2:])):
-                remove_text += f"<s>{d[2:].lstrip()}</s><br>\n"
+                remove_text += f"<s>{escape_html(d[2:].lstrip())}</s><br>\n"
 
     if len(add_text) > 0:
         if add_text[-1] == '\n': add_text = add_text[:-1]
@@ -193,7 +194,7 @@ def poll_new_tasks():
                             item['prev_stack_id'], item['next_stack_id'], item['prev_stack_title'], item[
                                 'next_stack_title'] = None, None, None, None
                     if saved['stack_id'] != item['stack_id']:
-                        changes.append(f"Колонка: <b>{saved['stack_title']}</b> → <b>{item['stack_title']}</b>")
+                        changes.append(f"Колонка: <b>{sanitize(saved['stack_title'])}</b> → <b>{sanitize(item['stack_title'])}</b>")
                     UTC = timezone.utc
                     od = saved['duedate'].replace(tzinfo=UTC).astimezone(MSK).strftime("%y-%m-%d %H:%M") if saved[
                         'duedate'] else None
@@ -202,7 +203,7 @@ def poll_new_tasks():
                     if od != nd:
                         changes.append([saved['duedate'], item['duedate']])
                     if saved['title'] != item['title']:
-                        changes.append(f"Заголовок: `{saved['title']}` → `{item['title']}`")
+                        changes.append(f"Заголовок: <code>{code_text(saved['title'])}</code> → <code>{code_text(item['title'])}</code>")
                     if saved['description'] != item['description']:
                         text = change_description(saved['description'], item['description'])
                         changes.append(f"Описание изменилось: \n{text}")
@@ -264,7 +265,7 @@ def poll_new_tasks():
                             for comment_id in news_comments:
                                 data = id_to_info_map.get(comment_id)
                                 if data is not None:
-                                    comment_text += f"<b>{data.get('author')}:</b> {data.get('message')}<br>\n"
+                                    comment_text += f"<b>{escape_html(data.get('author'))}:</b> {user_block_q(data.get('message'))}<br>\n"
                                 save_task_comment(card_id, comment_id)
 
                             if comment_text[-1] == '\n': comment_text = comment_text[:-1]
@@ -275,14 +276,14 @@ def poll_new_tasks():
                         if inc_comments > 0:
                             send_log(
                                 "💬 Новые комментарии:" + "<br>\n"
-                                                          f"{inc_comments} в «{item['title']}»<br>\n{comment_text}",
+                                                          f"{inc_comments} в «{sanitize(item['title'])}»<br>\n{comment_text}",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
                         elif inc_comments < 0:
                             send_log(
                                 "🗑 Удалены комментарии: " + "<br>\n"
-                                                             f"{-inc_comments} в «{item['title']}»",
+                                                             f"{-inc_comments} в «{sanitize(item['title'])}»",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
@@ -290,14 +291,14 @@ def poll_new_tasks():
                         if inc_attachments > 0:
                             send_log(
                                 "📎 Новые вложения:" + "<br>\n"
-                                                       f"{inc_attachments} в «{item['title']}»<br>\n{url_text}",
+                                                       f"{inc_attachments} в «{sanitize(item['title'])}»<br>\n{url_text}",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
                         elif inc_attachments < 0:
                             send_log(
                                 "🗑 Удалены вложения: " + "<br>\n"
-                                                          f" {-inc_attachments} в «{item['title']}»",
+                                                          f" {-inc_attachments} в «{sanitize(item['title'])}»",
                                 board_id=item['board_id'],
                                 reply_markup=kb,
                             )
@@ -365,12 +366,12 @@ def poll_new_tasks():
                             else:
                                 duedat_str = str(duedat)
                             user_msg = (
-                                f"🆕 Новая задача: <b>{item['title']}</b><br>\n"
+                                f"🆕 Новая задача: <b>{sanitize(item['title'])}</b><br>\n"
                                 f"Labels: {''.join(f'[{_to_hashtag(lab)}]' for lab in item['labels']) or '—'}<br>\n"
-                                f"Board: {item['board_title']}<br>\n"
-                                f"Column: {item['stack_title']}<br>\n"
+                                f"Board: {sanitize(item['board_title'])}<br>\n"
+                                f"Column: {sanitize(item['stack_title'])}<br>\n"
                                 f"Due: {duedat_str}<br>\n"
-                                f"Description: <br>\n<blockquote expandable>{item['description'] or '—'}</blockquote>"
+                                f"Description: <br>\n<blockquote expandable>{user_block_q(item['description']) or '—'}</blockquote>"
                             )
                             kb.add(
                                 InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
@@ -385,12 +386,12 @@ def poll_new_tasks():
                     kb = InlineKeyboardMarkup()
                     kb.add(InlineKeyboardButton(text="Открыть на клауде", url=card_url(item["board_id"], card_id)))
                     send_log(
-                        f"🆕 <b>Новая задача</b>: {item['title']}<br>\n"
+                        f"🆕 <b>Новая задача</b>: {sanitize(item['title'])}<br>\n"
                         f"Labels: {''.join(f'[{_to_hashtag(lab)}]' for lab in item['labels']) or '—'}<br>\n"
-                        f"Board: {item['board_title']}<br>\n"
-                        f"Column: {item['stack_title']}<br>\n"
+                        f"Board: {sanitize(item['board_title'])}<br>\n"
+                        f"Column: {sanitize(item['stack_title'])}<br>\n"
                         f"Due: {item['duedate'] or '—'}<br>\n"
-                        f"Description: <br>\n<blockquote expandable>{item['description'] or '—'}</blockquote>",
+                        f"Description: <br>\n<blockquote expandable>{user_block_q(item['description']) or '—'}</blockquote>",
                         board_id=item['board_id'],
                         reply_markup=kb,
                     )
@@ -413,10 +414,10 @@ def poll_new_tasks():
                                     nd = format_to_timezone(nd, tz=need_zone) if nd else "—"
                                 else:
                                     nd = str(nd)
-                                changes[i] = f"Due: `{od or '—'}` → `{nd or '—'}`"
+                                changes[i] = f"Due: <code>{code_text(od or '—')}</code> → <code>{code_text(nd or '—')}</code>"
                         send_message_limited(
                             tg_id,
-                            f"✏️ <b>Изменения в карточке</b> «{item['title']}» (ID {cid_link}):<br>\n" + "<br>\n".join(changes),
+                            f"✏️ <b>Изменения в карточке</b> «{sanitize(item['title'])}» (ID {cid_link}):<br>\n" + "<br>\n".join(changes),
                             reply_markup=kb,
                         )
 
@@ -433,9 +434,9 @@ def poll_new_tasks():
                                 nd = format_to_timezone(nd, tz=get_timezone(None)) if nd else "—"
                             else:
                                 nd = str(nd)
-                            changes[i] = f"Due: `{od or '—'}` → `{nd or '—'}`"
+                            changes[i] = f"Due: <code>{code_text(od or '—')}</code> → <code>{code_text(nd or '—')}</code>"
                     send_log(
-                        f"✏️ <b>Изменения в карточке</b> «{item['title']}»:<br>\n" + "<br>\n".join(changes),
+                        f"✏️ <b>Изменения в карточке</b> «{sanitize(item['title'])}»:<br>\n" + "<br>\n".join(changes),
                         board_id=item['board_id'],
                         reply_markup=kb,
                     )
@@ -449,7 +450,7 @@ def poll_new_tasks():
                         if archive_card(item['board_id'], item['stack_id'], card_id):
                             days_done = (now_utc - done_utc).days
                             logger.info(
-                                f"CLOUD: карточка «{item['title']}» (ID {card_id}) "
+                                f"CLOUD: карточка «{sanitize(item['title'])}» (ID {card_id}) "
                                 f"архивирована автоматически "
                                 f"(готова {days_done} дн.)"
                             )

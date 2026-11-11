@@ -1,6 +1,7 @@
 from source.config import WEB_CALDAV_URL, USERNAME, PASSWORD, COOLDOWN_TUESDAY, COOLDOWN_SUNDAY, COOLDOWN_DEFAULT, \
     POLL_INTERVAL, WEB_APP_URL, UPDATE_INTERVAL, TIMEZONE, CALDAV_USERNAME, CALDAV_PASSWORD, CALDAV_COOLDOWNS
 from source.connections.sender import send_message_limited
+from source.escaping import sanitize, user_block, escape_html
 from source.db.repos.users import (
     NEXTCLOUD_FIELD_MISSING, get_tg_id_by_email, get_timezone,
     get_user_credentials_from_db,
@@ -100,16 +101,16 @@ def msg_design_from_button(uid: str, teg_id: int, type_msg: int):
 
                         if type_msg == 2:
                             res += (f'📅 **СЕГОДНЯ СОБЫТИЕ В{WEEKDAY_RU.get(weekday, "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}**<br>\n'
-                                    f'{summary}<br>\n'
-                                    f'{description}<br>\n\n'
-                                    f'Локация: {location}<br>\n\n'
+                                    f'{sanitize(summary)}<br>\n'
+                                    f'{user_block(description)}<br>\n\n'
+                                    f'Локация: {sanitize(location)}<br>\n\n'
                                     f'Начало: {start_dt_str}<br>\n'
                                     f'Конец: {end_dt_str}<br>\n\n')
                         else:
                             res += (f'📅 **СОБЫТИЕ В{WEEKDAY_RU.get(weekday, "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}<br>**\n'
-                                    f'{summary}<br>\n'
-                                    f'{description}<br>\n\n'
-                                    f'Локация: {location}<br>\n\n'
+                                    f'{sanitize(summary)}<br>\n'
+                                    f'{user_block(description)}<br>\n\n'
+                                    f'Локация: {sanitize(location)}<br>\n\n'
                                     f'Начало: {start_dt_str}<br>\n'
                                     f'Конец: {end_dt_str}<br>\n\n')
 
@@ -122,11 +123,11 @@ def msg_design_from_button(uid: str, teg_id: int, type_msg: int):
                                 tg_id = get_tg_id_by_email(email)
 
                                 if a['role'] == "ORGANIZER" and tg_id is not None:
-                                    res += f"Организатор: <a href='tg://user?id={tg_id}'>{name}</a><br>\n"
+                                    res += f"Организатор: <a href='tg://user?id={tg_id}'>{sanitize(name)}</a><br>\n"
                                     break
 
                                 elif a['role'] == "ORGANIZER" and tg_id is None:
-                                    res += f"Организатор: {name}<br>\n"
+                                    res += f"Организатор: {sanitize(name)}<br>\n"
                                     break
 
                             res += "👥 Участники:<br>\n<blockquote expandable>\n"
@@ -136,7 +137,7 @@ def msg_design_from_button(uid: str, teg_id: int, type_msg: int):
                                 tg_id = get_tg_id_by_email(email)
                                 if a['role'] != "ORGANIZER" and tg_id is not None and tg_id == teg_id:
                                     status = a['status']
-                                    res += f"<a href='tg://user?id={tg_id}'>{name}</a> — {PARSTAT_RU.get(a['status'], 'Неизвестно')}<br>\n"
+                                    res += f"<a href='tg://user?id={tg_id}'>{escape_html(name)}</a> — {PARSTAT_RU.get(a['status'], 'Неизвестно')}<br>\n"
                                     break
 
                             for a in attendees:
@@ -144,10 +145,10 @@ def msg_design_from_button(uid: str, teg_id: int, type_msg: int):
                                 name = a.get('name')
                                 tg_id = get_tg_id_by_email(email)
                                 if a['role'] != "ORGANIZER" and tg_id is not None and tg_id != teg_id:
-                                    res += f"<a href='tg://user?id={tg_id}'>{name}</a> — {PARSTAT_RU.get(a['status'], 'Неизвестно')}<br>\n"
+                                    res += f"<a href='tg://user?id={tg_id}'>{escape_html(name)}</a> — {PARSTAT_RU.get(a['status'], 'Неизвестно')}<br>\n"
 
                                 elif a['role'] != "ORGANIZER" and tg_id is None:
-                                    res += f"{name} — {PARSTAT_RU.get(a['status'], 'Неизвестно')}<br>\n"
+                                    res += f"{escape_html(name)} — {PARSTAT_RU.get(a['status'], 'Неизвестно')}<br>\n"
 
                             if res[-1] == '\n': res = res[:-1]
                             res += '</blockquote>'
@@ -366,9 +367,9 @@ def get_calendar(teg_id, cooldown=6, all_events=False):
                         end_dt_str = _format_event_time(end_dt)
 
                         res += (f'📅 **СОБЫТИЕ В{WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}**<br>\n'
-                                f'{summary}<br>\n'
-                                f'{description}<br>\n\n'                                
-                                f'Локация: {location}<br>\n\n'
+                                f'{sanitize(summary)}<br>\n'
+                                f'{user_block(description)}<br>\n\n'                                
+                                f'Локация: {sanitize(location)}<br>\n\n'
                                 f'Начало: {start_dt_str}<br>\n'
                                 f'Конец: {end_dt_str}<br>\n\n')
 
@@ -381,11 +382,11 @@ def get_calendar(teg_id, cooldown=6, all_events=False):
                                 tg_id = get_tg_id_by_email(email)
 
                                 if a['role'] == "ORGANIZER" and tg_id is not None:
-                                    res += f"Организатор: <a href='tg://user?id={tg_id}'>{name}</a><br>\n"
+                                    res += f"Организатор: <a href='tg://user?id={tg_id}'>{sanitize(name)}</a><br>\n"
                                     break
 
                                 elif a['role'] == "ORGANIZER" and tg_id is None:
-                                    res += f"Организатор: {name}<br>\n"
+                                    res += f"Организатор: {sanitize(name)}<br>\n"
                                     break
 
                             res += "👥 Участники:<br>\n<blockquote expandable>\n"
@@ -395,7 +396,7 @@ def get_calendar(teg_id, cooldown=6, all_events=False):
                                 name = a.get('name')
                                 tg_id = get_tg_id_by_email(email)
                                 if a['role'] != "ORGANIZER" and tg_id is not None and teg_id == tg_id:
-                                    res += f"<a href='tg://user?id={tg_id}'>{name}</a> — {PARSTAT_RU.get(a['status'], 'Неизвестно')}<br>\n"
+                                    res += f"<a href='tg://user?id={tg_id}'>{escape_html(name)}</a> — {PARSTAT_RU.get(a['status'], 'Неизвестно')}<br>\n"
                                     break
 
                             for a in attendees:
@@ -403,10 +404,10 @@ def get_calendar(teg_id, cooldown=6, all_events=False):
                                 name = a.get('name')
                                 tg_id = get_tg_id_by_email(email)
                                 if a['role'] != "ORGANIZER" and tg_id is not None and teg_id != tg_id:
-                                    res += f"<a href='tg://user?id={tg_id}'>{name}</a> — {PARSTAT_RU.get(a['status'], 'Неизвестно')}<br>\n"
+                                    res += f"<a href='tg://user?id={tg_id}'>{escape_html(name)}</a> — {PARSTAT_RU.get(a['status'], 'Неизвестно')}<br>\n"
 
                                 elif a['role'] != "ORGANIZER" and tg_id is None:
-                                    res += f"{name} — {PARSTAT_RU.get(a['status'], 'Неизвестно')}<br>\n"
+                                    res += f"{escape_html(name)} — {PARSTAT_RU.get(a['status'], 'Неизвестно')}<br>\n"
 
                             if res[-1] == '\n': res = res[:-1]
                             res += '</blockquote>'
@@ -764,8 +765,8 @@ def poll_events():
                                 continue
 
                             res = (f'📅 **СЕГОДНЯ СОБЫТИЕ В{WEEKDAY_RU.get(start_dt.weekday(), "ОПРЕДЕЛЕННЫЙ ДЕНЬ")}**<br>\n'
-                                   f'{summary}\n{description}<br>\n\n'
-                                   f'Локация: {location}<br>\n\n'
+                                   f'{sanitize(summary)}<br>\n{user_block(description)}<br>\n\n'
+                                   f'Локация: {sanitize(location)}<br>\n\n'
                                    f'Начало: {_format_event_time(start_dt)}<br>\n'
                                    f'Конец: {_format_event_time(end_dt)}<br>\n\n')
 
@@ -775,9 +776,9 @@ def poll_events():
                                 name = participant.get('name')
                                 if participant['role'] == "ORGANIZER":
                                     if participant_id is not None:
-                                        res += f"Организатор: <a href='tg://user?id={participant_id}'>{name}</a><br>\n"
+                                        res += f"Организатор: <a href='tg://user?id={participant_id}'>{sanitize(name)}</a><br>\n"
                                     else:
-                                        res += f"Организатор: {name}<br>\n"
+                                        res += f"Организатор: {sanitize(name)}<br>\n"
                                     break
 
                             res += "👥 Участники:<br>\n<blockquote expandable>\n"
@@ -793,14 +794,14 @@ def poll_events():
                                 status = PARSTAT_RU.get(participant['status'], 'Неизвестно')
 
                                 if participant_id == teg_id and participant['status'] == "ACCEPTED":
-                                    res = f"Напоминаю, что созвон **{summary}** в **{_format_event_time(start_dt)}**!"
+                                    res = f"Напоминаю, что созвон **{sanitize(summary)}** в **{_format_event_time(start_dt)}**!"
                                     second_send = True
                                     break
 
                                 if participant_id is not None:
-                                    res += f"<a href='tg://user?id={participant_id}'>{name}</a> — {status}<br>\n"
+                                    res += f"<a href='tg://user?id={participant_id}'>{escape_html(name)}</a> — {status}<br>\n"
                                 else:
-                                    res += f"{name} — {status}<br>\n"
+                                    res += f"{escape_html(name)} — {status}<br>\n"
                             if res[-1] == '\n':
                                 res = res[:-1]
 
