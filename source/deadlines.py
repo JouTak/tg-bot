@@ -12,6 +12,7 @@ from source.db.repos.tasks import get_saved_tasks, get_saved_tasks_for_deadlines
 from source.db.repos.deadlines import get_last_sent_map, mark_sent, reset_sent_for_card
 from source.connections.sender import send_message_limited
 from source.links import card_url
+from source.escaping import sanitize
 
 from source.config import DEADLINES_INTERVAL, TIMEZONE, QUIET_HOURS, DEADLINE_REPEAT_DAYS, EXCLUDED_CARD_IDS
 
@@ -112,7 +113,7 @@ def _line_for_stage(stage: str, item: dict, now_utc: datetime) -> str:
         "post_repeat": f"🔁 Просрочено уже {(now_utc - due).days} дн.",
     }.get(stage, "⏰ Напоминание")
 
-    return f"— {prefix}: «{title}» — ID: {link} — {due_s} (Δ {rel})"
+    return f"— {prefix}: «{sanitize(title)}» — ID: {link} — {due_s} (Δ {rel})"
 
 
 def _to_utc_naive(dt: datetime | None) -> datetime | None:
