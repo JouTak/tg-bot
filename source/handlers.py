@@ -334,21 +334,60 @@ def init_group(message):
     is_admin = check_admin_by_tg_id(message.from_user.id)
     if not is_admin:
         return
+
     parts = (message.text or "").split()
     mode = parts[1].lower() if len(parts) > 1 else "boards"
     if mode not in {"boards", "tags"}:
         send_message_limited(message.chat.id, "Использование: /init boards|tags")
         return
-    create_chat_config(
-        message.chat.id,
-        mode=mode,
-        default_topic_id=getattr(message, "message_thread_id", None),
+
+    # Топик, из которого вызвана команда, автоматически становится общим.
+    default_topic_id = getattr(message, "message_thread_id", None)
+    existing_config = get_chat_config(message.chat.id)
+
+    if existing_config is None:
+        create_chat_config(
+            message.chat.id,
+            mode=mode,
+            default_topic_id=default_topic_id,
+        )
+    else:
+        # Повторный /init не должен стирать привязки топиков и blacklist.
+        set_chat_mode(message.chat.id, mode)
+        set_chat_enabled(message.chat.id, True)
+        set_default_topic(message.chat.id, default_topic_id)
+
+    extra_info = []
+    if mode == "boards":
+        # Снимок создаём только при первой регистрации или первом переходе
+        # в boards. Повторный /init не должен делать новые теги известными.
+        known_tags = (existing_config or {}).get("meta", {}).get("known_tag_ids")
+        should_initialize_tags = existing_config is None or (
+                existing_config.get("mode") != "boards" or known_tags is None
+        )
+        if should_initialize_tags:
+            if initialize_known_tags_from_db(message.chat.id):
+                config = get_chat_config(message.chat.id)
+                count = len((config or {}).get("meta", {}).get("known_tag_ids", []))
+                extra_info.append(f"Сохранён снимок существующих тегов: {count}.")
+            else:
+                extra_info.append("Не удалось сохранить снимок тегов; проверьте подключение к БД.")
+
+    default_topic_text = (
+        f"Общий топик: текущий (ID {default_topic_id})."
+        if default_topic_id is not None
+        else "Общий топик: основная тема группы."
+    )
+    response = (
+            f"Беседа зарегистрирована. Режим: <b>{mode}</b>.\n"
+            f"{default_topic_text}\n"
+            + ("\n".join(extra_info) + "\n" if extra_info else "")
+            + "Настройка: /chatmode, /chatboards, /chattag, /chatboardtopic, /chatblacklist."
     )
     send_message_limited(
         message.chat.id,
-        f"Беседа зарегистрирована. Режим: <b>{mode}</b>.\n"
-        "Настройка: /chatmode, /chatboards, /chattag, /chatblacklist, /chatknown_tags.",
-        message_thread_id=getattr(message, "message_thread_id", None),
+        response,
+        message_thread_id=default_topic_id,
     )
 
 @bot.message_handler(commands=["chatboards"], func=lambda msg: msg.chat.type != "private" and msg.text.startswith('/'))
@@ -368,7 +407,7 @@ def chat_boards_handler(message):
         send_message_limited(message.chat.id, "Укажите одну или две доски через запятую.")
         return
     if not set_target_boards(message.chat.id, board_ids):
-        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /chatregister")
+        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /init boards|tags")
         return
     send_message_limited(message.chat.id, f"Для режима tags установлены доски: {', '.join(map(str, board_ids))}.")
 
@@ -388,20 +427,9 @@ def chat_tag_handler(message):
         send_message_limited(message.chat.id, "tag_id должен быть числом.")
         return
     if not set_tag_topic(message.chat.id, tag_id, thread_id):
-        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /chatregister")
+        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /init boards|tags")
         return
     send_message_limited(message.chat.id, f"Тег {tag_id} привязан к этому топику.", message_thread_id=thread_id)
-
-@bot.message_handler(commands=["chatdefault"], func=lambda msg: msg.chat.type != "private" and msg.text.startswith('/'))
-def chat_default_topic_handler(message):
-    is_admin = check_admin_by_tg_id(message.from_user.id)
-    if not is_admin:
-        return
-    if not set_default_topic(message.chat.id, getattr(message, "message_thread_id", None)):
-        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /chatregister")
-        return
-    send_message_limited(message.chat.id, "Текущий топик установлен как общий для беседы.",
-                         message_thread_id=getattr(message, "message_thread_id", None))
 
 
 @bot.message_handler(commands=["chatblacklist"], func=lambda msg: msg.chat.type != "private" and msg.text.startswith('/'))
@@ -416,24 +444,9 @@ def chat_blacklist_handler(message):
         send_message_limited(message.chat.id, "Использование: /chatblacklist <board_id>[,<board_id>]")
         return
     if not set_board_blacklist(message.chat.id, board_ids):
-        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /chatregister")
+        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /init boards|tags")
         return
     send_message_limited(message.chat.id, "Blacklist досок обновлён: " + (", ".join(map(str, board_ids)) or "пусто"))
-
-@bot.message_handler(commands=["chatknown_tags"], func=lambda msg: msg.chat.type != "private" and msg.text.startswith('/'))
-def chat_known_tags_handler(message):
-    is_admin = check_admin_by_tg_id(message.from_user.id)
-    if not is_admin:
-        return
-    if not initialize_known_tags_from_db(message.chat.id):
-        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /chatregister")
-        return
-    config = get_chat_config(message.chat.id)
-    count = len(config["meta"].get("known_tag_ids", []))
-    send_message_limited(
-        message.chat.id,
-        f"Снимок известных тегов сохранён: {count}. Новые ID тегов в режиме boards будут игнорироваться."
-    )
 
 @bot.message_handler(commands=["chatdisable", "chatenable"], func=lambda msg: msg.chat.type != "private" and msg.text.startswith('/'))
 def chat_enabled_handler(message):
@@ -442,6 +455,6 @@ def chat_enabled_handler(message):
         return
     enabled = (message.text or "").split()[0].split("@", 1)[0].lstrip("/") == "chatenable"
     if not set_chat_enabled(message.chat.id, enabled):
-        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /chatregister")
+        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /init boards|tags")
         return
     send_message_limited(message.chat.id, "Уведомления для беседы " + ("включены." if enabled else "отключены."))
