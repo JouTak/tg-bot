@@ -382,7 +382,6 @@ def init_group(message):
             f"Беседа зарегистрирована. Режим: <b>{mode}</b>.\n"
             f"{default_topic_text}\n"
             + ("\n".join(extra_info) + "\n" if extra_info else "")
-            + "Настройка: /chatmode, /chatboards, /chattag, /chatboardtopic, /chatblacklist."
     )
     send_message_limited(
         message.chat.id,
@@ -396,20 +395,21 @@ def chat_boards_handler(message):
     if not is_admin:
         return
     parts = (message.text or "").split(maxsplit=1)
+    default_topic_id = getattr(message, "message_thread_id", None)
     if len(parts) != 2:
-        send_message_limited(message.chat.id, "Использование: /chatboards <board_id>[,<board_id>]")
+        send_message_limited(message.chat.id, "Использование: /chatboards <board_id>[,<board_id>]", message_thread_id=default_topic_id)
         return
     try:
         board_ids = _parse_id_list(parts[1])
         if not board_ids or len(board_ids) > 2:
             raise ValueError
     except ValueError:
-        send_message_limited(message.chat.id, "Укажите одну или две доски через запятую.")
+        send_message_limited(message.chat.id, "Укажите одну или две доски через запятую.", message_thread_id=default_topic_id)
         return
     if not set_target_boards(message.chat.id, board_ids):
-        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /init boards|tags")
+        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /init boards|tags", message_thread_id=default_topic_id)
         return
-    send_message_limited(message.chat.id, f"Для режима tags установлены доски: {', '.join(map(str, board_ids))}.")
+    send_message_limited(message.chat.id, f"Для режима tags установлены доски: {', '.join(map(str, board_ids))}.", message_thread_id=default_topic_id)
 
 @bot.message_handler(commands=["chattag"], func=lambda msg: msg.chat.type != "private" and msg.text.startswith('/'))
 def chat_tag_handler(message):
@@ -419,15 +419,15 @@ def chat_tag_handler(message):
     parts = (message.text or "").split()
     thread_id = getattr(message, "message_thread_id", None)
     if len(parts) != 2 or thread_id is None:
-        send_message_limited(message.chat.id, "Вызовите /chattag <tag_id> внутри нужного топика.")
+        send_message_limited(message.chat.id, "Вызовите /chattag <tag_id> внутри нужного топика.", message_thread_id=thread_id)
         return
     try:
         tag_id = int(parts[1])
     except ValueError:
-        send_message_limited(message.chat.id, "tag_id должен быть числом.")
+        send_message_limited(message.chat.id, "tag_id должен быть числом.", message_thread_id=thread_id)
         return
     if not set_tag_topic(message.chat.id, tag_id, thread_id):
-        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /init boards|tags")
+        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /init boards|tags", message_thread_id=thread_id)
         return
     send_message_limited(message.chat.id, f"Тег {tag_id} привязан к этому топику.", message_thread_id=thread_id)
 
@@ -438,15 +438,16 @@ def chat_blacklist_handler(message):
     if not is_admin:
         return
     parts = (message.text or "").split(maxsplit=1)
+    thread_id = getattr(message, "message_thread_id", None)
     try:
         board_ids = _parse_id_list(parts[1]) if len(parts) == 2 else []
     except ValueError:
-        send_message_limited(message.chat.id, "Использование: /chatblacklist <board_id>[,<board_id>]")
+        send_message_limited(message.chat.id, "Использование: /chatblacklist <board_id>[,<board_id>]", message_thread_id=thread_id)
         return
     if not set_board_blacklist(message.chat.id, board_ids):
-        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /init boards|tags")
+        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /init boards|tags", message_thread_id=thread_id)
         return
-    send_message_limited(message.chat.id, "Blacklist досок обновлён: " + (", ".join(map(str, board_ids)) or "пусто"))
+    send_message_limited(message.chat.id, "Blacklist досок обновлён: " + (", ".join(map(str, board_ids)) or "пусто"), message_thread_id=thread_id)
 
 @bot.message_handler(commands=["chatdisable", "chatenable"], func=lambda msg: msg.chat.type != "private" and msg.text.startswith('/'))
 def chat_enabled_handler(message):
@@ -454,7 +455,8 @@ def chat_enabled_handler(message):
     if not is_admin:
         return
     enabled = (message.text or "").split()[0].split("@", 1)[0].lstrip("/") == "chatenable"
+    thread_id = getattr(message, "message_thread_id", None)
     if not set_chat_enabled(message.chat.id, enabled):
-        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /init boards|tags")
+        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /init boards|tags", message_thread_id=thread_id)
         return
-    send_message_limited(message.chat.id, "Уведомления для беседы " + ("включены." if enabled else "отключены."))
+    send_message_limited(message.chat.id, "Уведомления для беседы " + ("включены." if enabled else "отключены."), message_thread_id=thread_id)
