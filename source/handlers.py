@@ -431,6 +431,25 @@ def chat_tag_handler(message):
         return
     send_message_limited(message.chat.id, f"Тег {tag_id} привязан к этому топику.", message_thread_id=thread_id)
 
+@bot.message_handler(commands=["chatboardtopic"])
+def chat_board_topic_handler(message):
+    is_admin = check_admin_by_tg_id(message.from_user.id)
+    if not is_admin:
+        return
+    parts = (message.text or "").split()
+    thread_id = getattr(message, "message_thread_id", None)
+    if len(parts) != 2 or thread_id is None:
+        send_message_limited(message.chat.id, "Вызовите /chatboardtopic <board_id> внутри нужного топика.", message_thread_id=thread_id)
+        return
+    try:
+        board_id = int(parts[1])
+    except ValueError:
+        send_message_limited(message.chat.id, "board_id должен быть числом.", message_thread_id=thread_id)
+        return
+    if not set_board_topic(message.chat.id, board_id, thread_id):
+        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /init boards|tags", message_thread_id=thread_id)
+        return
+    send_message_limited(message.chat.id, f"Доска {board_id} привязана к этому топику.", message_thread_id=thread_id)
 
 @bot.message_handler(commands=["chatblacklist"], func=lambda msg: msg.chat.type != "private" and msg.text.startswith('/'))
 def chat_blacklist_handler(message):
