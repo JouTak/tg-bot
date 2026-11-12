@@ -112,6 +112,7 @@ class TaskLabel(Base):
 
     card_id = Column(Integer, ForeignKey("tasks.card_id"), primary_key=True)
     label = Column(String(100), primary_key=True)
+    label_id = Column(Integer, nullable=True, index=True)
 
     task = relationship("Task", back_populates="labels")
 
@@ -162,7 +163,7 @@ class ChatConfig(Base):
 
     id = Column(Integer, primary_key=True)
 
-    chat_id = Column(Integer, nullable=False, unique=True)
+    chat_id = Column(BigInteger, nullable=False, unique=True)
     enabled = Column(Boolean, nullable=False, default=True)
     mode = Column(String(20), nullable=False, default="boards")
     target_board_id = Column(Integer, nullable=True)

@@ -424,11 +424,21 @@ def fetch_all_tasks():
                             if old_attachments_count != attachments_count:
                                 attachments_data = _get_list_attachments(board_id, stack_id, card['id'])
 
+                        card_labels = card.get('labels') or []
                         labels = [
                             l.get('title', '')
-                            for l in (card.get('labels') or [])
+                            for l in card_labels
                             if l.get('title')
                         ]
+                        tag_ids = [
+                            int(l['id']) for l in card_labels
+                            if l.get('id') is not None
+                        ]
+                        tag_map = {
+                            str(l.get('title')): int(l['id'])
+                            for l in card_labels
+                            if l.get('title') and l.get('id') is not None
+                        }
 
                         result.append({
                             'card_id': card['id'],
@@ -450,6 +460,8 @@ def fetch_all_tasks():
                             'etag': etag,
                             'lastModified': int(lastModified),
                             'labels': labels,
+                            'tag_ids': tag_ids,
+                            'tag_map': tag_map,
                             'attachments_data': attachments_data,
                             'comments_data': comments_data
                         })

@@ -8,6 +8,12 @@ from source.db.repos.users import (
     delete_login_token, get_token, get_nc_token, get_email_by_tg_id,
     save_timezone, clear_timezone_override, check_admin_by_tg_id
 )
+from source.db.repos.chats_config import (
+    create_chat_config, delete_chat_config, get_chat_config,
+    set_chat_mode, set_chat_enabled, set_target_boards, set_tag_topic,
+    set_board_blacklist, set_default_topic, set_board_topic,
+    initialize_known_tags_from_db,
+)
 from source.db.repos.tasks import save_task_to_db, get_tasks_from_users, save_task_comment, get_task_stat, upsert_task_stats
 from source.db.repos.boards import save_board_topic
 from source.connections.nextcloud_api import fetch_user_tasks, get_board_title
@@ -17,6 +23,8 @@ from requests import post
 
 from source.nc_calendar import get_calendar
 
+def _parse_id_list(raw: str):
+    return [int(value.strip()) for value in raw.split(",") if value.strip()]
 
 @bot.message_handler(commands=['start'])
 def start_handler(message):
@@ -326,6 +334,114 @@ def init_group(message):
     is_admin = check_admin_by_tg_id(message.from_user.id)
     if not is_admin:
         return
+    parts = (message.text or "").split()
+    mode = parts[1].lower() if len(parts) > 1 else "boards"
+    if mode not in {"boards", "tags"}:
+        send_message_limited(message.chat.id, "Использование: /init boards|tags")
+        return
+    create_chat_config(
+        message.chat.id,
+        mode=mode,
+        default_topic_id=getattr(message, "message_thread_id", None),
+    )
+    send_message_limited(
+        message.chat.id,
+        f"Беседа зарегистрирована. Режим: <b>{mode}</b>.\n"
+        "Настройка: /chatmode, /chatboards, /chattag, /chatblacklist, /chatknown_tags.",
+        message_thread_id=getattr(message, "message_thread_id", None),
+    )
+
+@bot.message_handler(commands=["chatboards"], func=lambda msg: msg.chat.type != "private" and msg.text.startswith('/'))
+def chat_boards_handler(message):
+    is_admin = check_admin_by_tg_id(message.from_user.id)
+    if not is_admin:
+        return
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) != 2:
+        send_message_limited(message.chat.id, "Использование: /chatboards <board_id>[,<board_id>]")
+        return
+    try:
+        board_ids = _parse_id_list(parts[1])
+        if not board_ids or len(board_ids) > 2:
+            raise ValueError
+    except ValueError:
+        send_message_limited(message.chat.id, "Укажите одну или две доски через запятую.")
+        return
+    if not set_target_boards(message.chat.id, board_ids):
+        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /chatregister")
+        return
+    send_message_limited(message.chat.id, f"Для режима tags установлены доски: {', '.join(map(str, board_ids))}.")
+
+@bot.message_handler(commands=["chattag"], func=lambda msg: msg.chat.type != "private" and msg.text.startswith('/'))
+def chat_tag_handler(message):
+    is_admin = check_admin_by_tg_id(message.from_user.id)
+    if not is_admin:
+        return
+    parts = (message.text or "").split()
+    thread_id = getattr(message, "message_thread_id", None)
+    if len(parts) != 2 or thread_id is None:
+        send_message_limited(message.chat.id, "Вызовите /chattag <tag_id> внутри нужного топика.")
+        return
+    try:
+        tag_id = int(parts[1])
+    except ValueError:
+        send_message_limited(message.chat.id, "tag_id должен быть числом.")
+        return
+    if not set_tag_topic(message.chat.id, tag_id, thread_id):
+        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /chatregister")
+        return
+    send_message_limited(message.chat.id, f"Тег {tag_id} привязан к этому топику.", message_thread_id=thread_id)
+
+@bot.message_handler(commands=["chatdefault"], func=lambda msg: msg.chat.type != "private" and msg.text.startswith('/'))
+def chat_default_topic_handler(message):
+    is_admin = check_admin_by_tg_id(message.from_user.id)
+    if not is_admin:
+        return
+    if not set_default_topic(message.chat.id, getattr(message, "message_thread_id", None)):
+        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /chatregister")
+        return
+    send_message_limited(message.chat.id, "Текущий топик установлен как общий для беседы.",
+                         message_thread_id=getattr(message, "message_thread_id", None))
 
 
+@bot.message_handler(commands=["chatblacklist"], func=lambda msg: msg.chat.type != "private" and msg.text.startswith('/'))
+def chat_blacklist_handler(message):
+    is_admin = check_admin_by_tg_id(message.from_user.id)
+    if not is_admin:
+        return
+    parts = (message.text or "").split(maxsplit=1)
+    try:
+        board_ids = _parse_id_list(parts[1]) if len(parts) == 2 else []
+    except ValueError:
+        send_message_limited(message.chat.id, "Использование: /chatblacklist <board_id>[,<board_id>]")
+        return
+    if not set_board_blacklist(message.chat.id, board_ids):
+        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /chatregister")
+        return
+    send_message_limited(message.chat.id, "Blacklist досок обновлён: " + (", ".join(map(str, board_ids)) or "пусто"))
 
+@bot.message_handler(commands=["chatknown_tags"], func=lambda msg: msg.chat.type != "private" and msg.text.startswith('/'))
+def chat_known_tags_handler(message):
+    is_admin = check_admin_by_tg_id(message.from_user.id)
+    if not is_admin:
+        return
+    if not initialize_known_tags_from_db(message.chat.id):
+        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /chatregister")
+        return
+    config = get_chat_config(message.chat.id)
+    count = len(config["meta"].get("known_tag_ids", []))
+    send_message_limited(
+        message.chat.id,
+        f"Снимок известных тегов сохранён: {count}. Новые ID тегов в режиме boards будут игнорироваться."
+    )
+
+@bot.message_handler(commands=["chatdisable", "chatenable"], func=lambda msg: msg.chat.type != "private" and msg.text.startswith('/'))
+def chat_enabled_handler(message):
+    is_admin = check_admin_by_tg_id(message.from_user.id)
+    if not is_admin:
+        return
+    enabled = (message.text or "").split()[0].split("@", 1)[0].lstrip("/") == "chatenable"
+    if not set_chat_enabled(message.chat.id, enabled):
+        send_message_limited(message.chat.id, "Сначала зарегистрируйте беседу: /chatregister")
+        return
+    send_message_limited(message.chat.id, "Уведомления для беседы " + ("включены." if enabled else "отключены."))

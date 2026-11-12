@@ -277,6 +277,7 @@ def poll_new_tasks():
                                 "💬 Новые комментарии:" + "<br>\n"
                                                           f"{inc_comments} в «{item['title']}»<br>\n{comment_text}",
                                 board_id=item['board_id'],
+                                tag_ids=item.get('tag_ids', []),
                                 reply_markup=kb,
                             )
                         elif inc_comments < 0:
@@ -284,6 +285,7 @@ def poll_new_tasks():
                                 "🗑 Удалены комментарии: " + "<br>\n"
                                                              f"{-inc_comments} в «{item['title']}»",
                                 board_id=item['board_id'],
+                                tag_ids=item.get('tag_ids', []),
                                 reply_markup=kb,
                             )
 
@@ -292,6 +294,7 @@ def poll_new_tasks():
                                 "📎 Новые вложения:" + "<br>\n"
                                                        f"{inc_attachments} в «{item['title']}»<br>\n{url_text}",
                                 board_id=item['board_id'],
+                                tag_ids=item.get('tag_ids', []),
                                 reply_markup=kb,
                             )
                         elif inc_attachments < 0:
@@ -299,6 +302,7 @@ def poll_new_tasks():
                                 "🗑 Удалены вложения: " + "<br>\n"
                                                           f" {-inc_attachments} в «{item['title']}»",
                                 board_id=item['board_id'],
+                                tag_ids=item.get('tag_ids', []),
                                 reply_markup=kb,
                             )
 
@@ -324,7 +328,10 @@ def poll_new_tasks():
                     delete_task_label(card_id, label)
 
                 for label in new_labels:
-                    save_task_label(card_id, label)
+                    save_task_label(card_id, label, (item.get('tag_map') or {}).get(label))
+                # Обновляем ID и для уже сохранённых меток (для снимка известных тегов).
+                for label, label_id in (item.get('tag_map') or {}).items():
+                    save_task_label(card_id, label, label_id)
 
                 # === Работа с назначенными (БД) — всегда ===
                 assigned_logins_db = get_task_assignees(card_id)
@@ -392,6 +399,7 @@ def poll_new_tasks():
                         f"Due: {item['duedate'] or '—'}<br>\n"
                         f"Description: <br>\n<blockquote expandable>{item['description'] or '—'}</blockquote>",
                         board_id=item['board_id'],
+                        tag_ids=item.get('tag_ids', []),
                         reply_markup=kb,
                     )
                 # === Уведомления об изменениях ТОЛЬКО если не в исключениях ===
@@ -437,6 +445,7 @@ def poll_new_tasks():
                     send_log(
                         f"✏️ <b>Изменения в карточке</b> «{item['title']}»:<br>\n" + "<br>\n".join(changes),
                         board_id=item['board_id'],
+                        tag_ids=item.get('tag_ids', []),
                         reply_markup=kb,
                     )
 
