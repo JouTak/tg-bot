@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS users (
   nc_time_zone       INT           NOT NULL DEFAULT 3,
   nc_timezone        VARCHAR(64)   NULL,
   timezone_override  VARCHAR(64)   NULL,
-  nc_token           VARCHAR(100)  NULL
+  nc_token           VARCHAR(100)  NULL,
+  is_admin           BOOLEAN       DEFAULT FALSE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -69,3 +70,24 @@ CREATE TABLE IF NOT EXISTS task_labels (
 ) ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS chat_configs (
+    id                 INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    chat_id            INT          NOT NULL,
+    enabled            BOOLEAN      NOT NULL DEFAULT TRUE,
+    mode               VARCHAR(20)  NOT NULL DEFAULT 'boards',
+
+    target_board_id    INT          NULL,
+    tags               JSON         NULL,
+
+    board_blacklist    JSON         NULL,
+
+    meta               JSON         NULL,
+
+    created_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                    ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_chat_configs_chat_id (chat_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
