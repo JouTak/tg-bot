@@ -244,8 +244,8 @@ def upsert_task_stats(card_id: int, comments_count: int, attachments_count: int)
             session.add(stat)
 
 
-def save_task_label(card_id: int, label: str) -> None:
-    """Добавляет метку к задаче."""
+def save_task_label(card_id: int, label: str, label_id: Optional[int] = None) -> None:
+    """Добавляет или обновляет метку задачи вместе с ID метки Nextcloud."""
     with get_session() as session:
         stmt = select(TaskLabel).where(
             TaskLabel.card_id == card_id,
@@ -253,8 +253,17 @@ def save_task_label(card_id: int, label: str) -> None:
         )
         existing = session.execute(stmt).scalar_one_or_none()
         if not existing:
-            task_label = TaskLabel(card_id=card_id, label=label)
+            task_label = TaskLabel(card_id=card_id, label=label, label_id=label_id)
             session.add(task_label)
+        elif label_id is not None:
+            existing.label_id = int(label_id)
+
+
+def get_all_tag_ids() -> Set[int]:
+    """Возвращает ID всех известных меток из сохранённых задач."""
+    with get_session() as session:
+        stmt = select(TaskLabel.label_id).where(TaskLabel.label_id.is_not(None)).distinct()
+        return {int(value) for value in session.execute(stmt).scalars().all()}
 
 
 def delete_task_label(card_id: int, label: str) -> None:

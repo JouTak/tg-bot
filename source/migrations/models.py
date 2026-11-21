@@ -2,7 +2,7 @@ from source.db.db import Base
 
 from sqlalchemy import (
     Column, Integer, BigInteger, String, Text,
-    DateTime, TIMESTAMP, ForeignKey, Boolean, UniqueConstraint
+    DateTime, TIMESTAMP, ForeignKey, Boolean, UniqueConstraint, JSON
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -18,6 +18,7 @@ class User(Base):
     nc_timezone = Column(String(64), nullable=True)
     timezone_override = Column(String(64), nullable=True)
     nc_token = Column(String(100), nullable=True)
+    is_admin = Column(Boolean, default=False, nullable=False)
 
 class Task(Base):
     __tablename__ = "tasks"
@@ -111,6 +112,7 @@ class TaskLabel(Base):
 
     card_id = Column(Integer, ForeignKey("tasks.card_id"), primary_key=True)
     label = Column(String(100), primary_key=True)
+    label_id = Column(Integer, nullable=True, index=True)
 
     task = relationship("Task", back_populates="labels")
 
@@ -155,3 +157,29 @@ class CalDavSendData(Base):
     __table_args__ = (
         UniqueConstraint('event_name', 'tg_id', 'cooldown', name='_event_tg_uc'),
     )
+
+class ChatConfig(Base):
+    __tablename__ = "chat_configs"
+
+    id = Column(Integer, primary_key=True)
+
+    chat_id = Column(BigInteger, nullable=False, unique=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    mode = Column(String(20), nullable=False, default="boards")
+    target_board_id = Column(Integer, nullable=True)
+    tags = Column(JSON, nullable=True)
+    board_blacklist = Column(JSON, nullable=True)
+    meta = Column(JSON, nullable=True)
+
+    created_at = Column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.current_timestamp()
+    )
+    updated_at = Column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=func.current_timestamp(),
+        onupdate=func.current_timestamp()
+    )
+

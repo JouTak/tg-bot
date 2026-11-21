@@ -19,7 +19,7 @@ def in_done_stack(card: dict):
     card_id = card['card_id']
     stack_id = card['stack_id']
     all_stacks_resp = requests.get(f"{BASE_URL}/boards/{board_id}/stacks?details=true", headers=HEADERS,
-                                   auth=HTTPBasicAuth(USERNAME, PASSWORD))
+                                   auth=HTTPBasicAuth(USERNAME, PASSWORD), timeout=(10, 30))
     all_stacks_resp.raise_for_status()
     data = all_stacks_resp.json()
     if not data:
@@ -56,22 +56,26 @@ def _extract_counts(card: dict) -> Tuple[int, int]:
     return int(comments or 0), int(atts or 0)
 
 def _get_list_attachments(board_id, stack_id, card_id):
-    attachs = requests.get(
-                            f"{BASE_URL}/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/attachments?details=true",
-                            headers=HEADERS,
-                            auth=HTTPBasicAuth(USERNAME, PASSWORD),
-                        )
-    attachs.raise_for_status()
-    attachments = attachs.json()
-    attachments_data = [
-            {
-                'file_id': attachment.get('extendedData', {}).get('fileid'),
-                'path': attachment.get('extendedData', {}).get('path')
-            }
-            for attachment in attachments
-            ]
+    try:
+        attachs = requests.get(
+                                f"{BASE_URL}/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/attachments?details=true",
+                                headers=HEADERS,
+                                auth=HTTPBasicAuth(USERNAME, PASSWORD),
+                                timeout=(10, 30)
+                            )
+        attachs.raise_for_status()
+        attachments = attachs.json()
+        attachments_data = [
+                {
+                    'file_id': attachment.get('extendedData', {}).get('fileid'),
+                    'path': attachment.get('extendedData', {}).get('path')
+                }
+                for attachment in attachments
+                ]
 
-    return attachments_data or None
+        return attachments_data or None
+    except Exception as exc:
+        return None
 
 def _parse_due_utc_naive(value: Any, card_id: Optional[int] = None) -> Optional[datetime]:
     """
@@ -246,25 +250,28 @@ def get_url_attachment(path):
     return None
 
 def get_comments(card_id):
-    comm = requests.get(f"{OCS_BASE_URL}/deck/api/v1/cards/{card_id}/comments?format=json", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
-    comm.raise_for_status()
-    comments = comm.json().get('ocs', {}).get('data', {})
-    result = [
-        {
-            'comment_id': comment.get('id'),
-            'author': comment.get('actorDisplayName'),
-            'message': comment.get('message')
-        }
-        for comment in comments
-    ]
-    return result or None
+    try:
+        comm = requests.get(f"{OCS_BASE_URL}/deck/api/v1/cards/{card_id}/comments?format=json", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), timeout=(10, 30))
+        comm.raise_for_status()
+        comments = comm.json().get('ocs', {}).get('data', {})
+        result = [
+            {
+                'comment_id': comment.get('id'),
+                'author': comment.get('actorDisplayName'),
+                'message': comment.get('message')
+            }
+            for comment in comments
+        ]
+        return result or None
+    except Exception as exc:
+        return None
 
 
 def get_board_title(board_id):
     """
     Возвращает название доски по ID.
     """
-    boards_resp = requests.get(f"{BASE_URL}/boards", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
+    boards_resp = requests.get(f"{BASE_URL}/boards", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), timeout=(10, 30))
     boards_resp.raise_for_status()
     boards = boards_resp.json()
     for board in boards:
@@ -280,7 +287,7 @@ def fetch_user_tasks(login):
     """
     logger.debug("CLOUD: получаю задачи пользователя")
     result = []
-    boards_resp = requests.get(f"{BASE_URL}/boards", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD))
+    boards_resp = requests.get(f"{BASE_URL}/boards", headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), timeout=(10, 30))
     boards_resp.raise_for_status()
     boards = boards_resp.json()
 
@@ -294,7 +301,8 @@ def fetch_user_tasks(login):
         stacks_resp = requests.get(
             f"{BASE_URL}/boards/{board_id}/stacks?details=true",
             headers=HEADERS,
-            auth=HTTPBasicAuth(USERNAME, PASSWORD)
+            auth=HTTPBasicAuth(USERNAME, PASSWORD),
+            timeout=(10, 30)
         )
         stacks_resp.raise_for_status()
         stacks = sorted(stacks_resp.json(), key=lambda s: s['order'])
@@ -308,7 +316,8 @@ def fetch_user_tasks(login):
                 sd = requests.get(
                     f"{BASE_URL}/boards/{board_id}/stacks/{stack_id}?details=true",
                     headers=HEADERS,
-                    auth=HTTPBasicAuth(USERNAME, PASSWORD)
+                    auth=HTTPBasicAuth(USERNAME, PASSWORD),
+                    timeout=(10, 30)
                 )
                 sd.raise_for_status()
                 cards = sd.json().get('cards', [])
@@ -359,6 +368,7 @@ def fetch_all_tasks():
                 f"{BASE_URL}/boards",
                 headers=HEADERS,
                 auth=HTTPBasicAuth(USERNAME, PASSWORD),
+                timeout=(10, 30)
             )
             boards_resp.raise_for_status()
             boards = boards_resp.json()
@@ -374,6 +384,7 @@ def fetch_all_tasks():
                     f"{BASE_URL}/boards/{board_id}/stacks?details=true",
                     headers=HEADERS,
                     auth=HTTPBasicAuth(USERNAME, PASSWORD),
+                    timeout=(10, 30)
                 )
                 stacks_resp.raise_for_status()
                 stacks = sorted(stacks_resp.json(), key=lambda s: s['order'])
@@ -388,6 +399,7 @@ def fetch_all_tasks():
                             f"{BASE_URL}/boards/{board_id}/stacks/{stack_id}?details=true",
                             headers=HEADERS,
                             auth=HTTPBasicAuth(USERNAME, PASSWORD),
+                            timeout=(10, 30)
                         )
                         sd.raise_for_status()
                         cards = sd.json().get('cards', [])
@@ -424,11 +436,21 @@ def fetch_all_tasks():
                             if old_attachments_count != attachments_count:
                                 attachments_data = _get_list_attachments(board_id, stack_id, card['id'])
 
+                        card_labels = card.get('labels') or []
                         labels = [
                             l.get('title', '')
-                            for l in (card.get('labels') or [])
+                            for l in card_labels
                             if l.get('title')
                         ]
+                        tag_ids = [
+                            int(l['id']) for l in card_labels
+                            if l.get('id') is not None
+                        ]
+                        tag_map = {
+                            str(l.get('title')): int(l['id'])
+                            for l in card_labels
+                            if l.get('title') and l.get('id') is not None
+                        }
 
                         result.append({
                             'card_id': card['id'],
@@ -450,6 +472,8 @@ def fetch_all_tasks():
                             'etag': etag,
                             'lastModified': int(lastModified),
                             'labels': labels,
+                            'tag_ids': tag_ids,
+                            'tag_map': tag_map,
                             'attachments_data': attachments_data,
                             'comments_data': comments_data
                         })
